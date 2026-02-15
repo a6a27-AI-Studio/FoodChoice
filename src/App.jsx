@@ -394,7 +394,6 @@ function App() {
           </div>
         </div>
       )}
-      </main>
 
       <footer className="footer">
         <p>總共有 {foods.length} 個美食選項，篩選後 {filteredFoods.length} 個</p>
