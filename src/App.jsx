@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { initDatabase, getAllFoods, addFood, deleteFood, getRandomFood, setRating, getRecommendedFood, getAllRatings, exportData, importData } from './database';
+import { initDatabase, getAllFoods, addFood, updateFood, deleteFood, getRandomFood, setRating, getRecommendedFood, getAllRatings, exportData, importData } from './database';
 import DiceRoll from './components/DiceRoll';
 import FoodList from './components/FoodList';
 import AddFoodForm from './components/AddFoodForm';
@@ -20,6 +20,16 @@ function App() {
     businessHours: ''
   });
   const [sortBy, setSortBy] = useState('latest');
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [editTarget, setEditTarget] = useState(null);
+  const [editForm, setEditForm] = useState({
+    name: '',
+    flavor: '',
+    businessHours: '',
+    portion: '',
+    price: '',
+    guiltIndex: ''
+  });
   const importInputRef = useRef(null);
 
   useEffect(() => {
@@ -53,9 +63,40 @@ function App() {
     return false;
   };
 
-  const handleDeleteFood = async (id) => {
-    if (await deleteFood(id)) {
+  const handleDeleteFood = (food) => {
+    setDeleteTarget(food);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    if (await deleteFood(deleteTarget.id)) {
       await loadFoods();
+    }
+    setDeleteTarget(null);
+  };
+
+  const openEdit = (food) => {
+    setEditTarget(food);
+    setEditForm({
+      name: food.name || '',
+      flavor: food.flavor || '',
+      businessHours: food.businessHours || '',
+      portion: food.portion || '',
+      price: food.price || '',
+      guiltIndex: food.guiltIndex || ''
+    });
+  };
+
+  const handleEditSave = async () => {
+    if (!editTarget) return;
+    if (!editForm.name.trim()) {
+      alert('請輸入食物名稱');
+      return;
+    }
+    const ok = await updateFood(editTarget.id, editForm);
+    if (ok) {
+      await loadFoods();
+      setEditTarget(null);
     }
   };
 
@@ -255,7 +296,104 @@ function App() {
           ratings={ratings}
           onDelete={handleDeleteFood}
           onRating={handleRating}
+          onEdit={openEdit}
         />
+      </main>
+
+      {deleteTarget && (
+        <div className="modal-backdrop">
+          <div className="modal">
+            <h3>確認刪除</h3>
+            <p>確定要刪除「{deleteTarget.name}」嗎？</p>
+            <div className="modal-actions">
+              <button className="btn-secondary" onClick={() => setDeleteTarget(null)}>取消</button>
+              <button className="btn-danger" onClick={confirmDelete}>刪除</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editTarget && (
+        <div className="modal-backdrop">
+          <div className="modal">
+            <h3>編輯美食</h3>
+            <div className="modal-form">
+              <label>
+                食物名稱
+                <input
+                  type="text"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                />
+              </label>
+              <label>
+                口味
+                <select
+                  value={editForm.flavor}
+                  onChange={(e) => setEditForm({ ...editForm, flavor: e.target.value })}
+                >
+                  <option value="">選擇口味</option>
+                  <option value="甜">甜</option>
+                  <option value="鹹">鹹</option>
+                  <option value="酸">酸</option>
+                  <option value="辣">辣</option>
+                  <option value="苦">苦</option>
+                  <option value="混合">混合</option>
+                </select>
+              </label>
+              <label>
+                營業時間
+                <input
+                  type="text"
+                  placeholder="例如 11:00-21:00"
+                  value={editForm.businessHours}
+                  onChange={(e) => setEditForm({ ...editForm, businessHours: e.target.value })}
+                />
+              </label>
+              <label>
+                份量
+                <select
+                  value={editForm.portion}
+                  onChange={(e) => setEditForm({ ...editForm, portion: e.target.value })}
+                >
+                  <option value="">選擇份量</option>
+                  <option value="小">小</option>
+                  <option value="中">中</option>
+                  <option value="大">大</option>
+                </select>
+              </label>
+              <label>
+                價格
+                <select
+                  value={editForm.price}
+                  onChange={(e) => setEditForm({ ...editForm, price: e.target.value })}
+                >
+                  <option value="">選擇價格</option>
+                  <option value="低">低</option>
+                  <option value="中">中</option>
+                  <option value="高">高</option>
+                </select>
+              </label>
+              <label>
+                罪惡指數
+                <select
+                  value={editForm.guiltIndex}
+                  onChange={(e) => setEditForm({ ...editForm, guiltIndex: e.target.value })}
+                >
+                  <option value="">選擇罪惡指數</option>
+                  <option value="低">低</option>
+                  <option value="中">中</option>
+                  <option value="高">高</option>
+                </select>
+              </label>
+            </div>
+            <div className="modal-actions">
+              <button className="btn-secondary" onClick={() => setEditTarget(null)}>取消</button>
+              <button className="btn-primary" onClick={handleEditSave}>儲存</button>
+            </div>
+          </div>
+        </div>
+      )}
       </main>
 
       <footer className="footer">

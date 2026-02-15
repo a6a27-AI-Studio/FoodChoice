@@ -1,6 +1,6 @@
 import './FoodList.css';
 
-function FoodList({ foods, ratings = {}, onDelete, onRating }) {
+function FoodList({ foods, ratings = {}, onDelete, onRating, onEdit }) {
   const StarRating = ({ foodId }) => {
     const currentRating = ratings[foodId] || 0;
     return (
@@ -49,13 +49,22 @@ function FoodList({ foods, ratings = {}, onDelete, onRating }) {
               </div>
             </div>
             <StarRating foodId={food.id} />
-            <button 
-              className="delete-button"
-              onClick={() => onDelete(food.id)}
-              title="刪除"
-            >
-              ❌
-            </button>
+            <div className="food-actions">
+              <button 
+                className="edit-button"
+                onClick={() => onEdit?.(food)}
+                title="編輯"
+              >
+                ✏️
+              </button>
+              <button 
+                className="delete-button"
+                onClick={() => onDelete(food)}
+                title="刪除"
+              >
+                ❌
+              </button>
+            </div>
           </div>
         ))}
       </div>

@@ -46,6 +46,25 @@ export const addFood = async (foodData) => {
   }
 };
 
+export const updateFood = async (id, updates) => {
+  try {
+    const payload = {
+      name: updates.name?.trim() || '',
+      flavor: updates.flavor || '',
+      businesshours: updates.businessHours || updates.businesshours || '',
+      portion: updates.portion || '',
+      price: updates.price || '',
+      guiltindex: updates.guiltIndex || updates.guiltindex || ''
+    };
+    const { error } = await supabase.from('foods').update(payload).eq('id', id);
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error('更新美食失敗:', error);
+    return false;
+  }
+};
+
 export const deleteFood = async (id) => {
   try {
     const { error } = await supabase.from('foods').delete().eq('id', id);
