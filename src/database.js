@@ -14,7 +14,11 @@ export const getAllFoods = async () => {
       .select('*')
       .order('id', { ascending: false });
     if (error) throw error;
-    return data || [];
+    return (data || []).map((row) => ({
+      ...row,
+      businessHours: row.businesshours ?? row.businessHours ?? '',
+      guiltIndex: row.guiltindex ?? row.guiltIndex ?? ''
+    }));
   } catch (error) {
     console.error('載入資料失敗:', error);
     return [];
@@ -28,10 +32,10 @@ export const addFood = async (foodData) => {
     const { error } = await supabase.from('foods').insert({
       name: name.trim(),
       flavor: flavor || '',
-      businessHours: businessHours || '',
+      businesshours: businessHours || '',
       portion: portion || '',
       price: price || '',
-      guiltIndex: guiltIndex || '',
+      guiltindex: guiltIndex || '',
       created_at: new Date().toISOString()
     });
     if (error) throw error;
@@ -119,7 +123,13 @@ export const exportData = async () => {
     .select('food_id, stars, created_at');
   if (ratingsError) throw ratingsError;
 
-  return JSON.stringify({ foods: foods || [], ratings: ratings || [] });
+  const normalizedFoods = (foods || []).map((row) => ({
+    ...row,
+    businessHours: row.businesshours ?? row.businessHours ?? '',
+    guiltIndex: row.guiltindex ?? row.guiltIndex ?? ''
+  }));
+
+  return JSON.stringify({ foods: normalizedFoods, ratings: ratings || [] });
 };
 
 export const importData = async (jsonText) => {
@@ -135,10 +145,10 @@ export const importData = async (jsonText) => {
           id: food.id ?? undefined,
           name: food.name || '',
           flavor: food.flavor || '',
-          businessHours: food.businessHours || '',
+          businesshours: food.businessHours || food.businesshours || '',
           portion: food.portion || '',
           price: food.price || '',
-          guiltIndex: food.guiltIndex || '',
+          guiltindex: food.guiltIndex || food.guiltindex || '',
           created_at: food.created_at || new Date().toISOString()
         })), { onConflict: 'id' });
       if (error) throw error;
