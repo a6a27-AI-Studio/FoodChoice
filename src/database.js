@@ -1,165 +1,20 @@
-import initSqlJs from 'sql.js';
-import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
+import { createClient } from '@supabase/supabase-js';
 
-let SQL = null;
-let db = null;
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://pwhxnqiekanbpylvggnl.supabase.co';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_RSPFNJoI2epUn9WCJzckqw_LQxq1f5T';
 
-const DB_NAME = 'foodchoice-sqlite';
-const DB_KEY = 'foodchoice-db';
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const openIDB = () => new Promise((resolve, reject) => {
-  const request = indexedDB.open(DB_NAME, 1);
-  request.onupgradeneeded = () => {
-    request.result.createObjectStore('db');
-  };
-  request.onsuccess = () => resolve(request.result);
-  request.onerror = () => reject(request.error);
-});
-
-const loadFromIDB = async () => {
-  const idb = await openIDB();
-  return new Promise((resolve, reject) => {
-    const tx = idb.transaction('db', 'readonly');
-    const store = tx.objectStore('db');
-    const getReq = store.get(DB_KEY);
-    getReq.onsuccess = () => resolve(getReq.result || null);
-    getReq.onerror = () => reject(getReq.error);
-  });
-};
-
-const saveToIDB = async () => {
-  if (!db) return;
-  const idb = await openIDB();
-  return new Promise((resolve, reject) => {
-    const tx = idb.transaction('db', 'readwrite');
-    const store = tx.objectStore('db');
-    store.put(db.export(), DB_KEY);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-};
-
-const run = (sql, params = []) => {
-  if (!params || params.length === 0) {
-    db.run(sql);
-    return;
-  }
-  const stmt = db.prepare(sql);
-  stmt.run(params);
-  stmt.free();
-};
-
-const queryAll = (sql, params = []) => {
-  const result = db.exec(sql, params);
-  if (!result[0]) return [];
-  const columns = result[0].columns || result[0].lc || [];
-  const values = result[0].values || [];
-  return values.map((row) => {
-    const obj = {};
-    columns.forEach((col, idx) => {
-      obj[col] = row[idx];
-    });
-    return obj;
-  });
-};
-
-const ensureSchema = () => {
-  run(`
-    CREATE TABLE IF NOT EXISTS foods (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      flavor TEXT,
-      businessHours TEXT,
-      portion TEXT,
-      price TEXT,
-      guiltIndex TEXT,
-      created_at TEXT
-    );
-  `);
-  run(`
-    CREATE TABLE IF NOT EXISTS ratings (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      food_id INTEGER NOT NULL,
-      stars INTEGER NOT NULL,
-      created_at TEXT
-    );
-  `);
-  run(`
-    CREATE TABLE IF NOT EXISTS preferences (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      key TEXT UNIQUE,
-      value TEXT
-    );
-  `);
-  run(`
-    CREATE TABLE IF NOT EXISTS recommend_history (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      food_id INTEGER NOT NULL,
-      recommended_at TEXT
-    );
-  `);
-};
-
-const migrateFromLocalStorage = async () => {
-  if (localStorage.getItem('foodChoiceMigratedToSQLite') === '1') return;
-  const rawFoods = localStorage.getItem('foodChoiceDB');
-  const rawRatings = localStorage.getItem('foodChoiceRatings');
-  const foods = rawFoods ? JSON.parse(rawFoods) : [];
-  const ratings = rawRatings ? JSON.parse(rawRatings) : {};
-
-  foods.forEach((food) => {
-    if (!food?.name) return;
-    try {
-      run(
-        `INSERT INTO foods (id, name, flavor, businessHours, portion, price, guiltIndex, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)` ,
-        [
-          food.id || null,
-          food.name || '',
-          food.flavor || '',
-          food.businessHours || '',
-          food.portion || '',
-          food.price || '',
-          food.guiltIndex || '',
-          food.created_at || new Date().toISOString()
-        ]
-      );
-    } catch (error) {
-      console.warn('略過無效的美食資料', food, error);
-    }
-  });
-
-  foods.forEach((food) => {
-    const legacyRating = ratings[food.id];
-    if (legacyRating) {
-      run(
-        `INSERT INTO ratings (food_id, stars, created_at) VALUES (?, ?, ?)` ,
-        [food.id, legacyRating, new Date().toISOString()]
-      );
-    }
-  });
-
-  localStorage.setItem('foodChoiceMigratedToSQLite', '1');
-  await saveToIDB();
-};
-
-export const initDatabase = async () => {
-  if (!SQL) {
-    SQL = await initSqlJs({
-      locateFile: () => sqlWasmUrl
-    });
-  }
-
-  const saved = await loadFromIDB();
-  db = saved ? new SQL.Database(saved) : new SQL.Database();
-  ensureSchema();
-  await migrateFromLocalStorage();
-  await saveToIDB();
-};
+export const initDatabase = async () => true;
 
 export const getAllFoods = async () => {
   try {
-    return queryAll('SELECT * FROM foods ORDER BY id DESC');
+    const { data, error } = await supabase
+      .from('foods')
+      .select('*')
+      .order('id', { ascending: false });
+    if (error) throw error;
+    return data || [];
   } catch (error) {
     console.error('載入資料失敗:', error);
     return [];
@@ -168,22 +23,18 @@ export const getAllFoods = async () => {
 
 export const addFood = async (foodData) => {
   const { name, flavor, businessHours, portion, price, guiltIndex } = foodData;
-  if (!name.trim()) return false;
+  if (!name?.trim()) return false;
   try {
-    run(
-      `INSERT INTO foods (name, flavor, businessHours, portion, price, guiltIndex, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)` ,
-      [
-        name.trim(),
-        flavor,
-        businessHours,
-        portion,
-        price,
-        guiltIndex,
-        new Date().toISOString()
-      ]
-    );
-    await saveToIDB();
+    const { error } = await supabase.from('foods').insert({
+      name: name.trim(),
+      flavor: flavor || '',
+      businessHours: businessHours || '',
+      portion: portion || '',
+      price: price || '',
+      guiltIndex: guiltIndex || '',
+      created_at: new Date().toISOString()
+    });
+    if (error) throw error;
     return true;
   } catch (error) {
     console.error('新增美食失敗:', error);
@@ -193,9 +44,8 @@ export const addFood = async (foodData) => {
 
 export const deleteFood = async (id) => {
   try {
-    run('DELETE FROM foods WHERE id = ?', [id]);
-    run('DELETE FROM ratings WHERE food_id = ?', [id]);
-    await saveToIDB();
+    const { error } = await supabase.from('foods').delete().eq('id', id);
+    if (error) throw error;
     return true;
   } catch (error) {
     console.error('刪除美食失敗:', error);
@@ -212,8 +62,11 @@ export const getRandomFood = (filteredFoods = null) => {
 
 export const getAllRatings = async () => {
   try {
-    const rows = queryAll('SELECT food_id, stars FROM ratings');
-    return rows.reduce((acc, row) => {
+    const { data, error } = await supabase
+      .from('ratings')
+      .select('food_id, stars');
+    if (error) throw error;
+    return (data || []).reduce((acc, row) => {
       acc[row.food_id] = row.stars;
       return acc;
     }, {});
@@ -225,12 +78,14 @@ export const getAllRatings = async () => {
 
 export const setRating = async (foodId, rating) => {
   try {
-    run('DELETE FROM ratings WHERE food_id = ?', [foodId]);
-    run(
-      `INSERT INTO ratings (food_id, stars, created_at) VALUES (?, ?, ?)` ,
-      [foodId, rating, new Date().toISOString()]
-    );
-    await saveToIDB();
+    const { error } = await supabase
+      .from('ratings')
+      .upsert({
+        food_id: foodId,
+        stars: rating,
+        created_at: new Date().toISOString()
+      }, { onConflict: 'food_id' });
+    if (error) throw error;
   } catch (error) {
     console.error('設定評分失敗:', error);
   }
@@ -253,9 +108,18 @@ export const getRecommendedFood = (filteredFoods, ratingsMap) => {
 };
 
 export const exportData = async () => {
-  const foods = queryAll('SELECT * FROM foods ORDER BY id ASC');
-  const ratings = queryAll('SELECT food_id, stars, created_at FROM ratings');
-  return JSON.stringify({ foods, ratings });
+  const { data: foods, error: foodsError } = await supabase
+    .from('foods')
+    .select('*')
+    .order('id', { ascending: true });
+  if (foodsError) throw foodsError;
+
+  const { data: ratings, error: ratingsError } = await supabase
+    .from('ratings')
+    .select('food_id, stars, created_at');
+  if (ratingsError) throw ratingsError;
+
+  return JSON.stringify({ foods: foods || [], ratings: ratings || [] });
 };
 
 export const importData = async (jsonText) => {
@@ -264,36 +128,36 @@ export const importData = async (jsonText) => {
     const foods = Array.isArray(payload) ? payload : (payload.foods || []);
     const ratings = payload.ratings || [];
 
-    foods.forEach((food) => {
-      run(
-        `INSERT INTO foods (id, name, flavor, businessHours, portion, price, guiltIndex, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)` ,
-        [
-          food.id || null,
-          food.name || '',
-          food.flavor || '',
-          food.businessHours || '',
-          food.portion || '',
-          food.price || '',
-          food.guiltIndex || '',
-          food.created_at || new Date().toISOString()
-        ]
-      );
-    });
+    if (foods.length > 0) {
+      const { error } = await supabase
+        .from('foods')
+        .upsert(foods.map((food) => ({
+          id: food.id ?? undefined,
+          name: food.name || '',
+          flavor: food.flavor || '',
+          businessHours: food.businessHours || '',
+          portion: food.portion || '',
+          price: food.price || '',
+          guiltIndex: food.guiltIndex || '',
+          created_at: food.created_at || new Date().toISOString()
+        })), { onConflict: 'id' });
+      if (error) throw error;
+    }
 
-    ratings.forEach((rating) => {
-      if (!rating.food_id || !rating.stars) return;
-      run(
-        `INSERT INTO ratings (food_id, stars, created_at) VALUES (?, ?, ?)` ,
-        [rating.food_id, rating.stars, rating.created_at || new Date().toISOString()]
-      );
-    });
+    if (ratings.length > 0) {
+      const { error } = await supabase
+        .from('ratings')
+        .upsert(ratings.map((rating) => ({
+          food_id: rating.food_id,
+          stars: rating.stars,
+          created_at: rating.created_at || new Date().toISOString()
+        })), { onConflict: 'food_id' });
+      if (error) throw error;
+    }
 
-    await saveToIDB();
     return true;
   } catch (error) {
     console.error('匯入失敗:', error);
     return false;
   }
 };
-
