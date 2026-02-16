@@ -7,7 +7,10 @@ function AddFoodForm({ onAdd, foods }) {
     flavor: '',
     portion: '',
     price: '',
-    guiltIndex: ''
+    guiltIndex: '',
+    addressText: '',
+    lat: '',
+    lng: ''
   });
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
@@ -66,8 +69,25 @@ function AddFoodForm({ onAdd, foods }) {
       return;
     }
 
+    const latValue = formData.lat?.trim();
+    const lngValue = formData.lng?.trim();
+    if ((latValue && !lngValue) || (!latValue && lngValue)) {
+      setError('若填寫座標，請同時填入緯度與經度');
+      return;
+    }
+    if (latValue && !Number.isFinite(Number(latValue))) {
+      setError('緯度格式不正確');
+      return;
+    }
+    if (lngValue && !Number.isFinite(Number(lngValue))) {
+      setError('經度格式不正確');
+      return;
+    }
+
     const submitData = {
       ...formData,
+      lat: latValue ? Number(latValue) : null,
+      lng: lngValue ? Number(lngValue) : null,
       businessHours: `${startTime}-${endTime}`
     };
 
@@ -77,7 +97,10 @@ function AddFoodForm({ onAdd, foods }) {
         flavor: '',
         portion: '',
         price: '',
-        guiltIndex: ''
+        guiltIndex: '',
+        addressText: '',
+        lat: '',
+        lng: ''
       });
       setStartTime('');
       setEndTime('');
@@ -181,6 +204,44 @@ function AddFoodForm({ onAdd, foods }) {
             <option value="中">中</option>
             <option value="高">高</option>
           </select>
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="addressText">地址:</label>
+          <input
+            type="text"
+            id="addressText"
+            name="addressText"
+            value={formData.addressText}
+            onChange={handleChange}
+            placeholder="例如 台北市信義區..."
+          />
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="lat">緯度:</label>
+          <input
+            type="number"
+            id="lat"
+            name="lat"
+            step="0.000001"
+            value={formData.lat}
+            onChange={handleChange}
+            placeholder="例如 25.033964"
+          />
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="lng">經度:</label>
+          <input
+            type="number"
+            id="lng"
+            name="lng"
+            step="0.000001"
+            value={formData.lng}
+            onChange={handleChange}
+            placeholder="例如 121.564468"
+          />
         </div>
         
         <button type="submit">新增</button>

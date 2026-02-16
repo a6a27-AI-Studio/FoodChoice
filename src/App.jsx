@@ -28,8 +28,14 @@ function App() {
     businessHours: '',
     portion: '',
     price: '',
-    guiltIndex: ''
+    guiltIndex: '',
+    addressText: '',
+    lat: '',
+    lng: ''
   });
+  const [userLocation, setUserLocation] = useState(null);
+  const [locationStatus, setLocationStatus] = useState('idle');
+  const [locationError, setLocationError] = useState('');
 
   useEffect(() => {
     const init = async () => {
@@ -46,6 +52,12 @@ function App() {
     };
     init();
   }, []);
+
+  useEffect(() => {
+    if (sortBy === 'distanceAsc' || sortBy === 'distanceDesc') {
+      ensureLocation();
+    }
+  }, [sortBy]);
 
   const loadFoods = async () => {
     const allFoods = await getAllFoods();
@@ -82,7 +94,10 @@ function App() {
       businessHours: food.businessHours || '',
       portion: food.portion || '',
       price: food.price || '',
-      guiltIndex: food.guiltIndex || ''
+      guiltIndex: food.guiltIndex || '',
+      addressText: food.addressText || '',
+      lat: Number.isFinite(food.lat) ? String(food.lat) : '',
+      lng: Number.isFinite(food.lng) ? String(food.lng) : ''
     });
   };
 
@@ -92,7 +107,27 @@ function App() {
       alert('請輸入食物名稱');
       return;
     }
-    const ok = await updateFood(editTarget.id, editForm);
+
+    const latValue = editForm.lat?.trim();
+    const lngValue = editForm.lng?.trim();
+    if ((latValue && !lngValue) || (!latValue && lngValue)) {
+      alert('若填寫座標，請同時填入緯度與經度');
+      return;
+    }
+    if (latValue && !Number.isFinite(Number(latValue))) {
+      alert('緯度格式不正確');
+      return;
+    }
+    if (lngValue && !Number.isFinite(Number(lngValue))) {
+      alert('經度格式不正確');
+      return;
+    }
+
+    const ok = await updateFood(editTarget.id, {
+      ...editForm,
+      lat: latValue ? Number(latValue) : null,
+      lng: lngValue ? Number(lngValue) : null
+    });
     if (ok) {
       await loadFoods();
       setEditTarget(null);
@@ -132,6 +167,47 @@ function App() {
     setSearchQuery(recommended.name); // Highlight in search
   };
 
+  const ensureLocation = async () => {
+    if (userLocation || locationStatus === 'requesting') return;
+    if (!navigator.geolocation) {
+      setLocationStatus('error');
+      setLocationError('此瀏覽器不支援定位功能');
+      return;
+    }
+
+    setLocationStatus('requesting');
+    setLocationError('');
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setUserLocation({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+          accuracy: position.coords.accuracy
+        });
+        setLocationStatus('ready');
+      },
+      (error) => {
+        console.error('定位失敗:', error);
+        setLocationStatus(error.code === 1 ? 'denied' : 'error');
+        setLocationError('未取得定位權限，距離排序將停用');
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  const haversineKm = (lat1, lng1, lat2, lng2) => {
+    const toRad = (value) => (value * Math.PI) / 180;
+    const R = 6371;
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+      Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
+
   const filteredFoods = foods.filter((food) => {
     const query = searchQuery.trim().toLowerCase();
     if (query && !food.name.toLowerCase().includes(query)) return false;
@@ -164,11 +240,35 @@ function App() {
     }));
   };
 
+  const decoratedFoods = filteredFoods.map((food) => {
+    if (!userLocation || !Number.isFinite(food.lat) || !Number.isFinite(food.lng)) {
+      return { ...food, distanceKm: null };
+    }
+    return {
+      ...food,
+      distanceKm: haversineKm(userLocation.lat, userLocation.lng, food.lat, food.lng)
+    };
+  });
+
   const sortedFoods = (() => {
-    const list = [...filteredFoods];
+    const list = [...decoratedFoods];
     switch (sortBy) {
       case 'name':
         return list.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
+      case 'distanceAsc':
+        if (!userLocation) return list.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+        return list.sort((a, b) => {
+          if (a.distanceKm === null) return 1;
+          if (b.distanceKm === null) return -1;
+          return a.distanceKm - b.distanceKm;
+        });
+      case 'distanceDesc':
+        if (!userLocation) return list.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+        return list.sort((a, b) => {
+          if (a.distanceKm === null) return 1;
+          if (b.distanceKm === null) return -1;
+          return b.distanceKm - a.distanceKm;
+        });
       case 'latest':
       default:
         return list.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
@@ -206,10 +306,19 @@ function App() {
 
         <div className="filters-section">
           <h3>篩選器</h3>
+          <div className="location-row">
+            <button className="location-button" onClick={ensureLocation}>取得定位</button>
+            <span className="location-hint">定位僅用於距離計算，不會儲存。</span>
+          </div>
+          {locationError && (
+            <div className="location-error">{locationError}</div>
+          )}
           <div className="filters">
             <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
               <option value="latest">最新加入</option>
               <option value="name">名稱排序</option>
+              <option value="distanceAsc">距離最近</option>
+              <option value="distanceDesc">距離最遠</option>
             </select>
             <select value={filters.flavor} onChange={(e) => handleFilterChange('flavor', e.target.value)}>
               <option value="">所有口味</option>
@@ -347,6 +456,35 @@ function App() {
                   <option value="中">中</option>
                   <option value="高">高</option>
                 </select>
+              </label>
+              <label>
+                地址
+                <input
+                  type="text"
+                  placeholder="例如 台北市信義區..."
+                  value={editForm.addressText}
+                  onChange={(e) => setEditForm({ ...editForm, addressText: e.target.value })}
+                />
+              </label>
+              <label>
+                緯度
+                <input
+                  type="number"
+                  step="0.000001"
+                  placeholder="例如 25.033964"
+                  value={editForm.lat}
+                  onChange={(e) => setEditForm({ ...editForm, lat: e.target.value })}
+                />
+              </label>
+              <label>
+                經度
+                <input
+                  type="number"
+                  step="0.000001"
+                  placeholder="例如 121.564468"
+                  value={editForm.lng}
+                  onChange={(e) => setEditForm({ ...editForm, lng: e.target.value })}
+                />
               </label>
             </div>
             <div className="modal-actions">

@@ -46,6 +46,10 @@ function FoodList({ foods, ratings = {}, onDelete, onRating, onEdit }) {
                 <span className="attribute">份量: {food.portion}</span>
                 <span className="attribute">價格: {food.price}</span>
                 <span className="attribute">罪惡指數: {food.guiltIndex}</span>
+                {food.addressText && <span className="attribute">地址: {food.addressText}</span>}
+                {Number.isFinite(food.distanceKm) && (
+                  <span className="attribute">距離: {food.distanceKm.toFixed(1)} km</span>
+                )}
               </div>
             </div>
             <StarRating foodId={food.id} />

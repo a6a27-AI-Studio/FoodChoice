@@ -228,3 +228,33 @@
     max-width: none;
   }
 }
+
+.location-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.location-button {
+  padding: 8px 14px;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #42a5f5, #7e57c2);
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.location-hint {
+  font-size: 0.85rem;
+  opacity: 0.9;
+}
+
+.location-error {
+  margin-top: 6px;
+  color: #ffd1d1;
+  font-size: 0.85rem;
+}

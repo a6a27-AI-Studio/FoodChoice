@@ -5,6 +5,12 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publisha
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+const toNumber = (value) => {
+  if (value === null || value === undefined || value === '') return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+};
+
 export const initDatabase = async () => true;
 
 export const getAllFoods = async () => {
@@ -17,7 +23,10 @@ export const getAllFoods = async () => {
     return (data || []).map((row) => ({
       ...row,
       businessHours: row.businesshours ?? row.businessHours ?? '',
-      guiltIndex: row.guiltindex ?? row.guiltIndex ?? ''
+      guiltIndex: row.guiltindex ?? row.guiltIndex ?? '',
+      addressText: row.address_text ?? row.addressText ?? '',
+      lat: toNumber(row.lat ?? row.latitude),
+      lng: toNumber(row.lng ?? row.longitude)
     }));
   } catch (error) {
     console.error('載入資料失敗:', error);
@@ -26,7 +35,7 @@ export const getAllFoods = async () => {
 };
 
 export const addFood = async (foodData) => {
-  const { name, flavor, businessHours, portion, price, guiltIndex } = foodData;
+  const { name, flavor, businessHours, portion, price, guiltIndex, addressText, lat, lng } = foodData;
   if (!name?.trim()) return false;
   try {
     const { error } = await supabase.from('foods').insert({
@@ -36,6 +45,9 @@ export const addFood = async (foodData) => {
       portion: portion || '',
       price: price || '',
       guiltindex: guiltIndex || '',
+      address_text: addressText || '',
+      lat: toNumber(lat),
+      lng: toNumber(lng),
       created_at: new Date().toISOString()
     });
     if (error) throw error;
@@ -54,7 +66,10 @@ export const updateFood = async (id, updates) => {
       businesshours: updates.businessHours || updates.businesshours || '',
       portion: updates.portion || '',
       price: updates.price || '',
-      guiltindex: updates.guiltIndex || updates.guiltindex || ''
+      guiltindex: updates.guiltIndex || updates.guiltindex || '',
+      address_text: updates.addressText || updates.address_text || '',
+      lat: toNumber(updates.lat),
+      lng: toNumber(updates.lng)
     };
     const { error } = await supabase.from('foods').update(payload).eq('id', id);
     if (error) throw error;
@@ -129,4 +144,3 @@ export const getRecommendedFood = (filteredFoods, ratingsMap) => {
   }
   return ratedFoods[ratedFoods.length - 1];
 };
-
