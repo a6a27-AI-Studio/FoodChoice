@@ -29,9 +29,7 @@ function App() {
     portion: '',
     price: '',
     guiltIndex: '',
-    addressText: '',
-    lat: '',
-    lng: ''
+    addressText: ''
   });
   const [userLocation, setUserLocation] = useState(null);
   const [locationStatus, setLocationStatus] = useState('idle');
@@ -67,11 +65,16 @@ function App() {
   };
 
   const handleAddFood = async (formData) => {
-    if (await addFood(formData)) {
-      await loadFoods();
-      return true;
+    try {
+      if (await addFood(formData)) {
+        await loadFoods();
+        return true;
+      }
+      return false;
+    } catch (error) {
+      alert(error?.message || '新增失敗，請稍後再試');
+      return false;
     }
-    return false;
   };
 
   const handleDeleteFood = (food) => {
@@ -95,9 +98,7 @@ function App() {
       portion: food.portion || '',
       price: food.price || '',
       guiltIndex: food.guiltIndex || '',
-      addressText: food.addressText || '',
-      lat: Number.isFinite(food.lat) ? String(food.lat) : '',
-      lng: Number.isFinite(food.lng) ? String(food.lng) : ''
+      addressText: food.addressText || ''
     });
   };
 
@@ -108,29 +109,16 @@ function App() {
       return;
     }
 
-    const latValue = editForm.lat?.trim();
-    const lngValue = editForm.lng?.trim();
-    if ((latValue && !lngValue) || (!latValue && lngValue)) {
-      alert('若填寫座標，請同時填入緯度與經度');
-      return;
-    }
-    if (latValue && !Number.isFinite(Number(latValue))) {
-      alert('緯度格式不正確');
-      return;
-    }
-    if (lngValue && !Number.isFinite(Number(lngValue))) {
-      alert('經度格式不正確');
-      return;
-    }
-
-    const ok = await updateFood(editTarget.id, {
-      ...editForm,
-      lat: latValue ? Number(latValue) : null,
-      lng: lngValue ? Number(lngValue) : null
-    });
-    if (ok) {
-      await loadFoods();
-      setEditTarget(null);
+    try {
+      const ok = await updateFood(editTarget.id, {
+        ...editForm
+      });
+      if (ok) {
+        await loadFoods();
+        setEditTarget(null);
+      }
+    } catch (error) {
+      alert(error?.message || '更新失敗，請稍後再試');
     }
   };
 
@@ -464,26 +452,6 @@ function App() {
                   placeholder="例如 台北市信義區..."
                   value={editForm.addressText}
                   onChange={(e) => setEditForm({ ...editForm, addressText: e.target.value })}
-                />
-              </label>
-              <label>
-                緯度
-                <input
-                  type="number"
-                  step="0.000001"
-                  placeholder="例如 25.033964"
-                  value={editForm.lat}
-                  onChange={(e) => setEditForm({ ...editForm, lat: e.target.value })}
-                />
-              </label>
-              <label>
-                經度
-                <input
-                  type="number"
-                  step="0.000001"
-                  placeholder="例如 121.564468"
-                  value={editForm.lng}
-                  onChange={(e) => setEditForm({ ...editForm, lng: e.target.value })}
                 />
               </label>
             </div>

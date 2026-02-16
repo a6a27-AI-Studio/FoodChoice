@@ -4,11 +4,32 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://pwhxnqiekanbp
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_RSPFNJoI2epUn9WCJzckqw_LQxq1f5T';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const GEOAPIFY_KEY = import.meta.env.VITE_GEOAPIFY_KEY || '';
 
 const toNumber = (value) => {
   if (value === null || value === undefined || value === '') return null;
   const num = Number(value);
   return Number.isFinite(num) ? num : null;
+};
+
+const geocodeAddress = async (addressText) => {
+  if (!GEOAPIFY_KEY) {
+    throw new Error('缺少 Geoapify API Key');
+  }
+  const url = `https://api.geoapify.com/v1/geocode/search?text=${encodeURIComponent(addressText)}&limit=1&apiKey=${GEOAPIFY_KEY}`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Geoapify 查詢失敗 (${response.status})`);
+  }
+  const payload = await response.json();
+  const feature = payload.features && payload.features[0];
+  if (!feature) {
+    throw new Error('找不到符合的地址座標');
+  }
+  return {
+    lat: toNumber(feature.properties.lat),
+    lng: toNumber(feature.properties.lon)
+  };
 };
 
 export const initDatabase = async () => true;
@@ -35,9 +56,14 @@ export const getAllFoods = async () => {
 };
 
 export const addFood = async (foodData) => {
-  const { name, flavor, businessHours, portion, price, guiltIndex, addressText, lat, lng } = foodData;
+  const { name, flavor, businessHours, portion, price, guiltIndex, addressText } = foodData;
   if (!name?.trim()) return false;
   try {
+    let geo = { lat: null, lng: null };
+    const addressValue = addressText?.trim();
+    if (addressValue) {
+      geo = await geocodeAddress(addressValue);
+    }
     const { error } = await supabase.from('foods').insert({
       name: name.trim(),
       flavor: flavor || '',
@@ -45,21 +71,26 @@ export const addFood = async (foodData) => {
       portion: portion || '',
       price: price || '',
       guiltindex: guiltIndex || '',
-      address_text: addressText || '',
-      lat: toNumber(lat),
-      lng: toNumber(lng),
+      address_text: addressValue || '',
+      lat: geo.lat,
+      lng: geo.lng,
       created_at: new Date().toISOString()
     });
     if (error) throw error;
     return true;
   } catch (error) {
     console.error('新增美食失敗:', error);
-    return false;
+    throw error;
   }
 };
 
 export const updateFood = async (id, updates) => {
   try {
+    const addressValue = (updates.addressText || updates.address_text || '').trim();
+    let geo = { lat: null, lng: null };
+    if (addressValue) {
+      geo = await geocodeAddress(addressValue);
+    }
     const payload = {
       name: updates.name?.trim() || '',
       flavor: updates.flavor || '',
@@ -67,16 +98,16 @@ export const updateFood = async (id, updates) => {
       portion: updates.portion || '',
       price: updates.price || '',
       guiltindex: updates.guiltIndex || updates.guiltindex || '',
-      address_text: updates.addressText || updates.address_text || '',
-      lat: toNumber(updates.lat),
-      lng: toNumber(updates.lng)
+      address_text: addressValue,
+      lat: geo.lat,
+      lng: geo.lng
     };
     const { error } = await supabase.from('foods').update(payload).eq('id', id);
     if (error) throw error;
     return true;
   } catch (error) {
     console.error('更新美食失敗:', error);
-    return false;
+    throw error;
   }
 };
 
