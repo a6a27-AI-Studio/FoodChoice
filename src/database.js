@@ -4,7 +4,7 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://pwhxnqiekanbp
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_RSPFNJoI2epUn9WCJzckqw_LQxq1f5T';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-const GEOAPIFY_KEY = import.meta.env.VITE_GEOAPIFY_KEY || '';
+const GEOAPIFY_KEY = import.meta.env.VITE_GEOAPIFY_KEY || 'c1b2db4edd224a12be391e77c7f72567';
 
 const toNumber = (value) => {
   if (value === null || value === undefined || value === '') return null;
