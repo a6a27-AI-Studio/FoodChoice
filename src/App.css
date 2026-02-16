@@ -63,35 +63,11 @@
   transition: all 0.3s ease;
 }
 
-.data-tools {
-  display: flex;
-  gap: 10px;
-  justify-content: center;
-  flex-wrap: wrap;
-  background: rgba(255, 255, 255, 0.15);
-  padding: 16px;
-  border-radius: 15px;
-  backdrop-filter: blur(10px);
-}
-
-.data-tools button {
-  padding: 10px 20px;
-  background: linear-gradient(135deg, #42a5f5, #7e57c2);
-  color: white;
-  border: none;
-  border-radius: 10px;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.data-tools button:hover,
 .recommend-button:hover {
   transform: translateY(-1px);
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
 }
 
-.data-tools button:active,
 .recommend-button:active {
   transform: translateY(0);
 }

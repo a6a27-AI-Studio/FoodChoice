@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { initDatabase, getAllFoods, addFood, updateFood, deleteFood, getRandomFood, setRating, getRecommendedFood, getAllRatings, exportData, importData } from './database';
+import { useState, useEffect } from 'react';
+import { initDatabase, getAllFoods, addFood, updateFood, deleteFood, getRandomFood, setRating, getRecommendedFood, getAllRatings } from './database';
 import DiceRoll from './components/DiceRoll';
 import FoodList from './components/FoodList';
 import AddFoodForm from './components/AddFoodForm';
@@ -30,7 +30,6 @@ function App() {
     price: '',
     guiltIndex: ''
   });
-  const importInputRef = useRef(null);
 
   useEffect(() => {
     const init = async () => {
@@ -133,31 +132,6 @@ function App() {
     setSearchQuery(recommended.name); // Highlight in search
   };
 
-  const handleExport = async () => {
-    const data = await exportData();
-    const blob = new Blob([data], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `foodchoice-export-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const handleImport = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const text = await file.text();
-    const ok = await importData(text);
-    if (ok) {
-      await loadFoods();
-      alert('匯入成功');
-    } else {
-      alert('匯入失敗，請確認檔案格式');
-    }
-    event.target.value = '';
-  };
-
   const filteredFoods = foods.filter((food) => {
     const query = searchQuery.trim().toLowerCase();
     if (query && !food.name.toLowerCase().includes(query)) return false;
@@ -228,18 +202,6 @@ function App() {
           <button onClick={handleRecommend} className="recommend-button">
             推薦食物
           </button>
-        </div>
-
-        <div className="data-tools">
-          <button onClick={handleExport} className="export-button">匯出資料</button>
-          <button onClick={() => importInputRef.current?.click()} className="import-button">匯入資料</button>
-          <input
-            ref={importInputRef}
-            type="file"
-            accept="application/json"
-            style={{ display: 'none' }}
-            onChange={handleImport}
-          />
         </div>
 
         <div className="filters-section">
