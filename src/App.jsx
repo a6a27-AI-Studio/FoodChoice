@@ -187,7 +187,7 @@ function App() {
         setLocationStatus('ready');
       },
       (error) => {
-        console.error('定位失敗:', error);
+        console.warn('定位失敗:', error);
         setLocationStatus(error.code === 1 ? 'denied' : 'error');
         setLocationError('未取得定位權限，距離排序將停用');
       },
