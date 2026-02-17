@@ -7,7 +7,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const GEOAPIFY_KEY = import.meta.env.VITE_GEOAPIFY_KEY || 'c1b2db4edd224a12be391e77c7f72567';
 
 export const signInWithGoogle = async () => {
-  const redirectTo = window?.location?.origin || undefined;
+  const origin = window?.location?.origin || '';
+  const redirectTo = origin ? `${origin}/FoodChoice/` : undefined;
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: redirectTo ? { redirectTo } : undefined
