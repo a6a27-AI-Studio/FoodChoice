@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { initDatabase, getFoodsByGroup, addFood, updateFood, deleteFood, getRandomFood, setRating, getRecommendedFood, getAllRatings, signInWithGoogle, signOut, getSession, onAuthStateChange, ensureUserProfile, getMyGroups, createGroup, getGroupRole, deleteGroup, createInvitation, acceptInvitation } from './database';
+import { initDatabase, getFoodsByGroup, addFood, updateFood, deleteFood, getRandomFood, setRating, getRecommendedFood, getAllRatings, signInWithGoogle, signOut, getSession, onAuthStateChange, ensureUserProfile, getMyGroups, createGroup, getGroupRole, deleteGroup, createInvitation, acceptInvitation, getGroupMembers, removeGroupMember, leaveGroup } from './database';
 import DiceRoll from './components/DiceRoll';
 import FoodList from './components/FoodList';
 import AddFoodForm from './components/AddFoodForm';
@@ -51,6 +51,10 @@ function App() {
   const [shareStatus, setShareStatus] = useState('');
   const [isSharing, setIsSharing] = useState(false);
   const [inviteToken, setInviteToken] = useState('');
+  const [membersOpen, setMembersOpen] = useState(false);
+  const [groupMembers, setGroupMembers] = useState([]);
+  const [membersStatus, setMembersStatus] = useState('');
+  const [memberActionId, setMemberActionId] = useState('');
   const [userLocation, setUserLocation] = useState(null);
   const [locationStatus, setLocationStatus] = useState('idle');
   const [locationError, setLocationError] = useState('');
@@ -347,8 +351,67 @@ function App() {
     }
   };
 
+  const loadMembers = async () => {
+    if (!activeGroupId) return;
+    setMembersStatus('載入中...');
+    try {
+      const list = await getGroupMembers(activeGroupId);
+      setGroupMembers(list);
+      setMembersStatus('');
+    } catch (error) {
+      setMembersStatus(error?.message || '載入成員失敗');
+    }
+  };
+
+  const handleOpenMembers = async () => {
+    setMembersOpen(true);
+    await loadMembers();
+  };
+
+  const handleLeaveGroup = async () => {
+    if (!activeGroupId || !user?.id) return;
+    const ok = window.confirm('確定要退出這個美食團嗎？');
+    if (!ok) return;
+    try {
+      await leaveGroup({ groupId: activeGroupId, userId: user.id });
+      setMembersOpen(false);
+      await loadGroups(user.id);
+    } catch (error) {
+      alert(error?.message || '退出群組失敗');
+    }
+  };
+
+  const handleRemoveMember = async (member) => {
+    if (!activeGroupId || !user?.id) return;
+    if (member.user_id === user.id) {
+      await handleLeaveGroup();
+      return;
+    }
+    const ok = window.confirm(`確定要移除 ${member.users?.full_name || member.users?.email || '此成員'} 嗎？`);
+    if (!ok) return;
+    try {
+      setMemberActionId(member.user_id);
+      await removeGroupMember({
+        groupId: activeGroupId,
+        adminId: user.id,
+        targetUserId: member.user_id
+      });
+      await loadMembers();
+      await loadGroups(user.id);
+    } catch (error) {
+      alert(error?.message || '移除成員失敗');
+    } finally {
+      setMemberActionId('');
+    }
+  };
+
   const canEdit = memberRole && memberRole !== 'readonly';
   const canDeleteGroup = memberRole === 'admin';
+  const roleLabels = {
+    admin: '管理員',
+    member: '可編輯',
+    readonly: '唯讀'
+  };
 
   const buildInviteLink = (token) => {
     const base = `${window.location.origin}/FoodChoice/`;
@@ -534,6 +597,12 @@ function App() {
             <button onClick={handleCreateGroup} className="btn-secondary">建立團</button>
             {activeGroupId && (
               <button onClick={() => { setShareGroupOpen(true); setShareStatus(''); setShareLink(''); }} className="btn-secondary">分享團</button>
+            )}
+            {activeGroupId && (
+              <button onClick={handleOpenMembers} className="btn-secondary">成員管理</button>
+            )}
+            {activeGroupId && (
+              <button onClick={handleLeaveGroup} className="btn-secondary">退出團</button>
             )}
             {canDeleteGroup && activeGroupId && (
               <button onClick={() => setDeleteGroupOpen(true)} className="btn-danger">刪除團</button>
@@ -827,6 +896,54 @@ function App() {
             </div>
             <div className="modal-actions">
               <button className="btn-secondary" onClick={() => setShareGroupOpen(false)}>關閉</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {user && membersOpen && (
+        <div className="modal-backdrop">
+          <div className="modal">
+            <h3>成員管理</h3>
+            {membersStatus && (
+              <div className="notice">{membersStatus}</div>
+            )}
+            <div className="member-list">
+              {groupMembers.map((member) => {
+                const displayName = member.users?.full_name || member.users?.email || '未命名';
+                const roleLabel = roleLabels[member.role] || member.role;
+                const isSelf = member.user_id === user?.id;
+                return (
+                  <div className="member-row" key={member.id}>
+                    <div className="member-info">
+                      <div className="member-name">{displayName}</div>
+                      {member.users?.email && (
+                        <div className="member-email">{member.users.email}</div>
+                      )}
+                    </div>
+                    <div className="member-role">{roleLabel}</div>
+                    {(canDeleteGroup || isSelf) && (
+                      <button
+                        className={isSelf ? 'btn-secondary' : 'btn-danger'}
+                        onClick={() => handleRemoveMember(member)}
+                        disabled={memberActionId === member.user_id}
+                      >
+                        {memberActionId === member.user_id
+                          ? '處理中...'
+                          : isSelf
+                          ? '退出團'
+                          : '移除成員'}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+              {groupMembers.length === 0 && !membersStatus && (
+                <div className="notice">尚無成員資料</div>
+              )}
+            </div>
+            <div className="modal-actions">
+              <button className="btn-secondary" onClick={() => setMembersOpen(false)}>關閉</button>
             </div>
           </div>
         </div>

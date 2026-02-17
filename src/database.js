@@ -141,6 +141,82 @@ export const getGroupMembers = async (groupId) => {
   return data || [];
 };
 
+const getAdminCount = async (groupId) => {
+  const { count, error } = await supabase
+    .from('group_memberships')
+    .select('id', { count: 'exact', head: true })
+    .eq('group_id', groupId)
+    .eq('role', 'admin');
+  if (error) throw error;
+  return count || 0;
+};
+
+export const leaveGroup = async ({ groupId, userId }) => {
+  if (!groupId) throw new Error('缺少群組資訊');
+  if (!userId) throw new Error('請先登入');
+  const { data: membership, error: roleError } = await supabase
+    .from('group_memberships')
+    .select('role')
+    .eq('group_id', groupId)
+    .eq('user_id', userId)
+    .single();
+  if (roleError) throw roleError;
+  if (membership?.role === 'admin') {
+    const adminCount = await getAdminCount(groupId);
+    if (adminCount <= 1) {
+      throw new Error('你是最後一位管理員，請先轉交管理權');
+    }
+  }
+  const { error } = await supabase
+    .from('group_memberships')
+    .delete()
+    .eq('group_id', groupId)
+    .eq('user_id', userId);
+  if (error) throw error;
+  return true;
+};
+
+export const removeGroupMember = async ({ groupId, adminId, targetUserId }) => {
+  if (!groupId) throw new Error('缺少群組資訊');
+  if (!adminId) throw new Error('請先登入');
+  if (!targetUserId) throw new Error('缺少成員資訊');
+  if (adminId === targetUserId) {
+    return leaveGroup({ groupId, userId: adminId });
+  }
+
+  const { data: adminMembership, error: adminError } = await supabase
+    .from('group_memberships')
+    .select('role')
+    .eq('group_id', groupId)
+    .eq('user_id', adminId)
+    .single();
+  if (adminError) throw adminError;
+  if (adminMembership?.role !== 'admin') throw new Error('僅管理員可移除成員');
+
+  const { data: targetMembership, error: targetError } = await supabase
+    .from('group_memberships')
+    .select('role')
+    .eq('group_id', groupId)
+    .eq('user_id', targetUserId)
+    .single();
+  if (targetError) throw targetError;
+
+  if (targetMembership?.role === 'admin') {
+    const adminCount = await getAdminCount(groupId);
+    if (adminCount <= 1) {
+      throw new Error('至少保留一位管理員');
+    }
+  }
+
+  const { error } = await supabase
+    .from('group_memberships')
+    .delete()
+    .eq('group_id', groupId)
+    .eq('user_id', targetUserId);
+  if (error) throw error;
+  return true;
+};
+
 const generateInviteToken = () => {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);

@@ -299,3 +299,50 @@
   color: #ffd1d1;
   font-size: 0.85rem;
 }
+
+.member-list {
+  display: grid;
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.member-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.member-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.member-name {
+  font-weight: 600;
+}
+
+.member-email {
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
+
+.member-role {
+  font-size: 0.9rem;
+  opacity: 0.85;
+}
+
+@media (max-width: 600px) {
+  .member-row {
+    grid-template-columns: 1fr;
+    align-items: flex-start;
+  }
+
+  .member-role {
+    margin-bottom: 6px;
+  }
+}
