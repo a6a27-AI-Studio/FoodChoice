@@ -601,9 +601,6 @@ function App() {
             {activeGroupId && (
               <button onClick={handleOpenMembers} className="btn-secondary">成員管理</button>
             )}
-            {activeGroupId && (
-              <button onClick={handleLeaveGroup} className="btn-secondary">退出團</button>
-            )}
             {canDeleteGroup && activeGroupId && (
               <button onClick={() => setDeleteGroupOpen(true)} className="btn-danger">刪除團</button>
             )}
@@ -914,9 +911,14 @@ function App() {
                 const roleLabel = roleLabels[member.role] || member.role;
                 const isSelf = member.user_id === user?.id;
                 return (
-                  <div className="member-row" key={member.id}>
+                  <div className={`member-row${isSelf ? ' is-self' : ''}`} key={member.id}>
                     <div className="member-info">
-                      <div className="member-name">{displayName}</div>
+                      <div className="member-name">
+                        {displayName}
+                        {isSelf && (
+                          <span className="self-badge">你</span>
+                        )}
+                      </div>
                       {member.users?.email && (
                         <div className="member-email">{member.users.email}</div>
                       )}

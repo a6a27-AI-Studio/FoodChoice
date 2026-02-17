@@ -316,6 +316,24 @@
   background: rgba(255, 255, 255, 0.08);
 }
 
+.member-row.is-self {
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.member-row.is-self .member-name {
+  font-weight: 700;
+}
+
+.self-badge {
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(126, 87, 194, 0.3);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
 .member-info {
   display: flex;
   flex-direction: column;
