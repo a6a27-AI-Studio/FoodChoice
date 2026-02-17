@@ -84,3 +84,18 @@
 .add-food-form button[type="submit"]:active {
   transform: translateY(0);
 }
+
+.readonly-hint {
+  background: rgba(255, 255, 255, 0.12);
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.add-food-form button[disabled],
+.form-group input[disabled],
+.form-group select[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

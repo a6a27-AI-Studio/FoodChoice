@@ -102,6 +102,11 @@
   align-items: center;
 }
 
+.readonly-text {
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
+
 .edit-button,
 .delete-button {
   padding: 6px 8px;

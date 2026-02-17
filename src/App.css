@@ -8,6 +8,47 @@
   animation: fadeIn 0.6s ease-in;
 }
 
+.header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.auth-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.user-info {
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+
+.group-bar {
+  margin-top: 16px;
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.group-select {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: none;
+  min-width: 180px;
+}
+
+.notice {
+  text-align: center;
+  background: rgba(255, 255, 255, 0.12);
+  padding: 16px;
+  border-radius: 12px;
+}
+
 .header h1 {
   font-size: 3rem;
   margin-bottom: 10px;

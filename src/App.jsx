@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { initDatabase, getAllFoods, addFood, updateFood, deleteFood, getRandomFood, setRating, getRecommendedFood, getAllRatings } from './database';
+import { initDatabase, getFoodsByGroup, addFood, updateFood, deleteFood, getRandomFood, setRating, getRecommendedFood, getAllRatings, signInWithGoogle, signOut, getSession, onAuthStateChange, ensureUserProfile, getMyGroups, createGroup, getGroupRole, deleteGroup, createInvitation, acceptInvitation } from './database';
 import DiceRoll from './components/DiceRoll';
 import FoodList from './components/FoodList';
 import AddFoodForm from './components/AddFoodForm';
@@ -11,6 +11,11 @@ function App() {
   const [selectedFood, setSelectedFood] = useState(null);
   const [isRolling, setIsRolling] = useState(false);
   const [dbReady, setDbReady] = useState(false);
+  const [session, setSession] = useState(null);
+  const [user, setUser] = useState(null);
+  const [groups, setGroups] = useState([]);
+  const [activeGroupId, setActiveGroupId] = useState('');
+  const [memberRole, setMemberRole] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState({
     flavor: '',
@@ -31,6 +36,21 @@ function App() {
     guiltIndex: '',
     addressText: ''
   });
+  const [createGroupOpen, setCreateGroupOpen] = useState(false);
+  const [createGroupForm, setCreateGroupForm] = useState({
+    name: '',
+    description: ''
+  });
+  const [isCreatingGroup, setIsCreatingGroup] = useState(false);
+  const [deleteGroupOpen, setDeleteGroupOpen] = useState(false);
+  const [isDeletingGroup, setIsDeletingGroup] = useState(false);
+  const [shareGroupOpen, setShareGroupOpen] = useState(false);
+  const [shareLink, setShareLink] = useState('');
+  const [shareEmail, setShareEmail] = useState('');
+  const [shareRole, setShareRole] = useState('readonly');
+  const [shareStatus, setShareStatus] = useState('');
+  const [isSharing, setIsSharing] = useState(false);
+  const [inviteToken, setInviteToken] = useState('');
   const [userLocation, setUserLocation] = useState(null);
   const [locationStatus, setLocationStatus] = useState('idle');
   const [locationError, setLocationError] = useState('');
@@ -40,15 +60,43 @@ function App() {
       try {
         await initDatabase();
         setDbReady(true);
-        await loadFoods();
+        const currentSession = await getSession();
+        setSession(currentSession);
+        setUser(currentSession?.user || null);
+        if (currentSession?.user) {
+          await ensureUserProfile(currentSession.user);
+          await loadGroups(currentSession.user.id);
+        }
       } catch (error) {
         console.error('初始化失敗:', error);
-        // 即使失敗也設置為 ready，因為有備援
         setDbReady(true);
-        await loadFoods();
       }
     };
     init();
+
+    const hash = window.location.hash || '';
+    const tokenMatch = hash.match(/#\/invite\/(.+)$/);
+    if (tokenMatch?.[1]) {
+      setInviteToken(tokenMatch[1]);
+    }
+
+    const { data } = onAuthStateChange(async (_event, newSession) => {
+      setSession(newSession);
+      setUser(newSession?.user || null);
+      if (newSession?.user) {
+        await ensureUserProfile(newSession.user);
+        await loadGroups(newSession.user.id);
+      } else {
+        setGroups([]);
+        setActiveGroupId('');
+        setMemberRole('');
+        setFoods([]);
+      }
+    });
+
+    return () => {
+      data?.subscription?.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -57,17 +105,66 @@ function App() {
     }
   }, [sortBy]);
 
-  const loadFoods = async () => {
-    const allFoods = await getAllFoods();
+  useEffect(() => {
+    const refreshGroup = async () => {
+      if (!activeGroupId || !user?.id) {
+        setMemberRole('');
+        setFoods([]);
+        return;
+      }
+      const role = await getGroupRole(activeGroupId, user.id);
+      setMemberRole(role || '');
+      await loadFoods(activeGroupId);
+    };
+    refreshGroup();
+  }, [activeGroupId, user?.id]);
+
+  useEffect(() => {
+    const acceptInviteIfNeeded = async () => {
+      if (!inviteToken || !user?.id) return;
+      try {
+        const invite = await acceptInvitation({ token: inviteToken, userId: user.id, userEmail: user.email });
+        await loadGroups(user.id);
+        if (invite?.group_id) {
+          setActiveGroupId(invite.group_id);
+        }
+        setInviteToken('');
+        window.history.replaceState({}, '', '/FoodChoice/#');
+        alert('已加入美食團');
+      } catch (error) {
+        alert(error?.message || '加入美食團失敗');
+      }
+    };
+    acceptInviteIfNeeded();
+  }, [inviteToken, user?.id]);
+
+  const loadFoods = async (groupId) => {
+    if (!groupId) {
+      setFoods([]);
+      setRatings({});
+      return;
+    }
+    const allFoods = await getFoodsByGroup(groupId);
     const allRatings = await getAllRatings();
     setFoods(allFoods);
     setRatings(allRatings);
   };
 
+  const loadGroups = async (userId) => {
+    const myGroups = await getMyGroups(userId);
+    setGroups(myGroups);
+    if (myGroups.length > 0) {
+      setActiveGroupId((prev) => (prev && myGroups.some((g) => g.id === prev) ? prev : myGroups[0].id));
+    } else {
+      setActiveGroupId('');
+      setFoods([]);
+    }
+  };
+
   const handleAddFood = async (formData) => {
     try {
-      if (await addFood(formData)) {
-        await loadFoods();
+      if (await addFood({ ...formData, groupId: activeGroupId })) {
+        await loadFoods(activeGroupId);
         return true;
       }
       return false;
@@ -84,7 +181,7 @@ function App() {
   const confirmDelete = async () => {
     if (!deleteTarget) return;
     if (await deleteFood(deleteTarget.id)) {
-      await loadFoods();
+      await loadFoods(activeGroupId);
     }
     setDeleteTarget(null);
   };
@@ -114,7 +211,7 @@ function App() {
         ...editForm
       });
       if (ok) {
-        await loadFoods();
+        await loadFoods(activeGroupId);
         setEditTarget(null);
       }
     } catch (error) {
@@ -126,6 +223,136 @@ function App() {
     await setRating(foodId, rating);
     const allRatings = await getAllRatings();
     setRatings(allRatings);
+  };
+
+  const handleSignIn = async () => {
+    try {
+      await signInWithGoogle();
+    } catch (error) {
+      alert(error?.message || '登入失敗，請稍後再試');
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+    } catch (error) {
+      alert(error?.message || '登出失敗，請稍後再試');
+    }
+  };
+
+  const handleCreateGroup = () => {
+    setCreateGroupForm({ name: '', description: '' });
+    setCreateGroupOpen(true);
+  };
+
+  const handleCreateGroupSubmit = async () => {
+    if (isCreatingGroup) return;
+    if (!createGroupForm.name.trim()) {
+      alert('請輸入團名稱');
+      return;
+    }
+    try {
+      setIsCreatingGroup(true);
+      const group = await createGroup({
+        name: createGroupForm.name,
+        description: createGroupForm.description,
+        ownerId: user?.id
+      });
+      await loadGroups(user?.id);
+      if (group?.id) {
+        setActiveGroupId(group.id);
+      }
+      setCreateGroupOpen(false);
+    } catch (error) {
+      alert(error?.message || '建立群組失敗');
+    } finally {
+      setIsCreatingGroup(false);
+    }
+  };
+
+  const handleDeleteGroup = async () => {
+    if (!activeGroupId || !user?.id) return;
+    if (!canDeleteGroup) {
+      alert('僅管理員可刪除群組');
+      return;
+    }
+    if (isDeletingGroup) return;
+    try {
+      setIsDeletingGroup(true);
+      await deleteGroup({ groupId: activeGroupId, userId: user.id });
+      setDeleteGroupOpen(false);
+      await loadGroups(user.id);
+      setActiveGroupId('');
+      setFoods([]);
+    } catch (error) {
+      alert(error?.message || '刪除群組失敗');
+    } finally {
+      setIsDeletingGroup(false);
+    }
+  };
+
+  const handleCreateShareLink = async () => {
+    if (!activeGroupId || !user?.id) return;
+    if (isSharing) return;
+    try {
+      setIsSharing(true);
+      const invite = await createInvitation({
+        groupId: activeGroupId,
+        role: shareRole,
+        invitedBy: user.id
+      });
+      const link = buildInviteLink(invite.token);
+      setShareLink(link);
+      setShareStatus('已產生邀請連結');
+    } catch (error) {
+      setShareStatus(error?.message || '產生邀請連結失敗');
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
+  const handleCreateEmailInvite = async () => {
+    if (!activeGroupId || !user?.id) return;
+    if (!shareEmail.trim()) {
+      setShareStatus('請輸入 Email');
+      return;
+    }
+    if (isSharing) return;
+    try {
+      setIsSharing(true);
+      const invite = await createInvitation({
+        groupId: activeGroupId,
+        role: shareRole,
+        invitedBy: user.id,
+        email: shareEmail
+      });
+      const link = buildInviteLink(invite.token);
+      setShareLink(link);
+      setShareStatus('已建立 Email 邀請，請將連結寄給對方');
+    } catch (error) {
+      setShareStatus(error?.message || 'Email 邀請建立失敗');
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
+  const handleCopyShareLink = async () => {
+    if (!shareLink) return;
+    try {
+      await navigator.clipboard.writeText(shareLink);
+      setShareStatus('已複製連結');
+    } catch (error) {
+      setShareStatus('複製失敗，請手動複製');
+    }
+  };
+
+  const canEdit = memberRole && memberRole !== 'readonly';
+  const canDeleteGroup = memberRole === 'admin';
+
+  const buildInviteLink = (token) => {
+    const base = `${window.location.origin}/FoodChoice/`;
+    return `${base}#/invite/${token}`;
   };
 
   const handleRollDice = () => {
@@ -274,92 +501,141 @@ function App() {
   return (
     <div className="app">
       <header className="header">
-        <h1>🎲 美食骰子</h1>
-        <p>今晚吃什麼？讓骰子決定！</p>
+        <div className="header-row">
+          <div>
+            <h1>🎲 美食骰子</h1>
+            <p>今晚吃什麼？讓骰子決定！</p>
+          </div>
+          <div className="auth-actions">
+            {user ? (
+              <>
+                <span className="user-info">{user.user_metadata?.full_name || user.email}</span>
+                <button onClick={handleSignOut} className="btn-secondary">登出</button>
+              </>
+            ) : (
+              <button onClick={handleSignIn} className="btn-primary">Google 登入</button>
+            )}
+          </div>
+        </div>
+        {user && (
+          <div className="group-bar">
+            <select
+              value={activeGroupId}
+              onChange={(e) => setActiveGroupId(e.target.value)}
+              className="group-select"
+            >
+              {groups.length === 0 && <option value="">尚未加入任何團</option>}
+              {groups.map((group) => (
+                <option key={group.id} value={group.id}>
+                  {group.name} ({group.role})
+                </option>
+              ))}
+            </select>
+            <button onClick={handleCreateGroup} className="btn-secondary">建立團</button>
+            {activeGroupId && (
+              <button onClick={() => { setShareGroupOpen(true); setShareStatus(''); setShareLink(''); }} className="btn-secondary">分享團</button>
+            )}
+            {canDeleteGroup && activeGroupId && (
+              <button onClick={() => setDeleteGroupOpen(true)} className="btn-danger">刪除團</button>
+            )}
+          </div>
+        )}
       </header>
 
       <main className="main">
-        <div className="search-section">
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="搜尋美食..."
-            className="search-input"
-          />
-          <button onClick={handleRecommend} className="recommend-button">
-            推薦食物
-          </button>
-        </div>
+        {!user && (
+          <div className="notice">請先登入以使用美食團功能。</div>
+        )}
+        {user && !activeGroupId && (
+          <div className="notice">尚未加入任何美食團，請建立新團或接受邀請。</div>
+        )}
 
-        <div className="filters-section">
-          <h3>篩選器</h3>
-          <div className="location-row">
-            <button className="location-button" onClick={ensureLocation}>取得定位</button>
-            <span className="location-hint">定位僅用於距離計算，不會儲存。</span>
-          </div>
-          {locationError && (
-            <div className="location-error">{locationError}</div>
-          )}
-          <div className="filters">
-            <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
-              <option value="latest">最新加入</option>
-              <option value="name">名稱排序</option>
-              <option value="distanceAsc">距離最近</option>
-              <option value="distanceDesc">距離最遠</option>
-            </select>
-            <select value={filters.flavor} onChange={(e) => handleFilterChange('flavor', e.target.value)}>
-              <option value="">所有口味</option>
-              <option value="甜">甜</option>
-              <option value="鹹">鹹</option>
-              <option value="酸">酸</option>
-              <option value="辣">辣</option>
-              <option value="苦">苦</option>
-              <option value="混合">混合</option>
-            </select>
-            <select value={filters.portion} onChange={(e) => handleFilterChange('portion', e.target.value)}>
-              <option value="">所有份量</option>
-              <option value="小">小</option>
-              <option value="中">中</option>
-              <option value="大">大</option>
-            </select>
-            <select value={filters.price} onChange={(e) => handleFilterChange('price', e.target.value)}>
-              <option value="">所有價格</option>
-              <option value="低">低</option>
-              <option value="中">中</option>
-              <option value="高">高</option>
-            </select>
-            <select value={filters.guiltIndex} onChange={(e) => handleFilterChange('guiltIndex', e.target.value)}>
-              <option value="">所有罪惡指數</option>
-              <option value="低">低</option>
-              <option value="中">中</option>
-              <option value="高">高</option>
-            </select>
-            <select value={filters.businessHours} onChange={(e) => handleFilterChange('businessHours', e.target.value)}>
-              <option value="">所有營業時間</option>
-              <option value="open">現在營業</option>
-            </select>
-          </div>
-        </div>
+        {user && activeGroupId && (
+          <>
+            <div className="search-section">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="搜尋美食..."
+                className="search-input"
+              />
+              <button onClick={handleRecommend} className="recommend-button">
+                推薦食物
+              </button>
+            </div>
 
-        <DiceRoll 
-          isRolling={isRolling} 
-          selectedFood={selectedFood}
-          onRoll={handleRollDice}
-        />
+            <div className="filters-section">
+              <h3>篩選器</h3>
+              <div className="location-row">
+                <button className="location-button" onClick={ensureLocation}>取得定位</button>
+                <span className="location-hint">定位僅用於距離計算，不會儲存。</span>
+              </div>
+              {locationError && (
+                <div className="location-error">{locationError}</div>
+              )}
+              <div className="filters">
+                <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+                  <option value="latest">最新加入</option>
+                  <option value="name">名稱排序</option>
+                  <option value="distanceAsc">距離最近</option>
+                  <option value="distanceDesc">距離最遠</option>
+                </select>
+                <select value={filters.flavor} onChange={(e) => handleFilterChange('flavor', e.target.value)}>
+                  <option value="">所有口味</option>
+                  <option value="甜">甜</option>
+                  <option value="鹹">鹹</option>
+                  <option value="酸">酸</option>
+                  <option value="辣">辣</option>
+                  <option value="苦">苦</option>
+                  <option value="混合">混合</option>
+                </select>
+                <select value={filters.portion} onChange={(e) => handleFilterChange('portion', e.target.value)}>
+                  <option value="">所有份量</option>
+                  <option value="小">小</option>
+                  <option value="中">中</option>
+                  <option value="大">大</option>
+                </select>
+                <select value={filters.price} onChange={(e) => handleFilterChange('price', e.target.value)}>
+                  <option value="">所有價格</option>
+                  <option value="低">低</option>
+                  <option value="中">中</option>
+                  <option value="高">高</option>
+                </select>
+                <select value={filters.guiltIndex} onChange={(e) => handleFilterChange('guiltIndex', e.target.value)}>
+                  <option value="">所有罪惡指數</option>
+                  <option value="低">低</option>
+                  <option value="中">中</option>
+                  <option value="高">高</option>
+                </select>
+                <select value={filters.businessHours} onChange={(e) => handleFilterChange('businessHours', e.target.value)}>
+                  <option value="">所有營業時間</option>
+                  <option value="open">現在營業</option>
+                </select>
+              </div>
+            </div>
 
-        <AddFoodForm onAdd={handleAddFood} foods={foods} />
+            <DiceRoll 
+              isRolling={isRolling} 
+              selectedFood={selectedFood}
+              onRoll={handleRollDice}
+            />
 
-        <FoodList 
-          foods={sortedFoods} 
-          ratings={ratings}
-          onDelete={handleDeleteFood}
-          onRating={handleRating}
-          onEdit={openEdit}
-        />
+            <AddFoodForm onAdd={handleAddFood} foods={foods} disabled={!canEdit} />
+
+            <FoodList 
+              foods={sortedFoods} 
+              ratings={ratings}
+              onDelete={handleDeleteFood}
+              onRating={handleRating}
+              onEdit={openEdit}
+              canEdit={canEdit}
+            />
+          </>
+        )}
       </main>
 
-      {deleteTarget && (
+      {canEdit && deleteTarget && (
         <div className="modal-backdrop">
           <div className="modal">
             <h3>確認刪除</h3>
@@ -372,7 +648,7 @@ function App() {
         </div>
       )}
 
-      {editTarget && (
+      {canEdit && editTarget && (
         <div className="modal-backdrop">
           <div className="modal">
             <h3>編輯美食</h3>
@@ -463,8 +739,105 @@ function App() {
         </div>
       )}
 
+      {user && createGroupOpen && (
+        <div className="modal-backdrop">
+          <div className="modal">
+            <h3>建立新團</h3>
+            <div className="modal-form">
+              <label>
+                團名稱
+                <input
+                  type="text"
+                  value={createGroupForm.name}
+                  onChange={(e) => setCreateGroupForm({ ...createGroupForm, name: e.target.value })}
+                />
+              </label>
+              <label>
+                描述（選填）
+                <input
+                  type="text"
+                  value={createGroupForm.description}
+                  onChange={(e) => setCreateGroupForm({ ...createGroupForm, description: e.target.value })}
+                />
+              </label>
+            </div>
+            <div className="modal-actions">
+              <button className="btn-secondary" onClick={() => setCreateGroupOpen(false)}>取消</button>
+              <button className="btn-primary" onClick={handleCreateGroupSubmit} disabled={isCreatingGroup}>
+                {isCreatingGroup ? '建立中...' : '建立'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {user && deleteGroupOpen && (
+        <div className="modal-backdrop">
+          <div className="modal">
+            <h3>刪除群組</h3>
+            <p>確定要刪除目前這個群組嗎？此動作無法復原。</p>
+            <div className="modal-actions">
+              <button className="btn-secondary" onClick={() => setDeleteGroupOpen(false)}>取消</button>
+              <button className="btn-danger" onClick={handleDeleteGroup} disabled={isDeletingGroup}>
+                {isDeletingGroup ? '刪除中...' : '刪除'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {user && shareGroupOpen && (
+        <div className="modal-backdrop">
+          <div className="modal">
+            <h3>分享美食團</h3>
+            <div className="modal-form">
+              <label>
+                權限
+                <select value={shareRole} onChange={(e) => setShareRole(e.target.value)}>
+                  <option value="readonly">唯讀</option>
+                  <option value="member">可編輯</option>
+                  <option value="admin">管理員</option>
+                </select>
+              </label>
+              <div className="modal-actions" style={{ justifyContent: 'flex-start', gap: '8px' }}>
+                <button className="btn-primary" onClick={handleCreateShareLink} disabled={isSharing}>產生邀請連結</button>
+                {shareLink && (
+                  <button className="btn-secondary" onClick={handleCopyShareLink}>複製連結</button>
+                )}
+              </div>
+              {shareLink && (
+                <div className="notice" style={{ wordBreak: 'break-all' }}>{shareLink}</div>
+              )}
+              <hr style={{ margin: '16px 0' }} />
+              <label>
+                Email 邀請
+                <input
+                  type="email"
+                  placeholder="輸入對方 Email"
+                  value={shareEmail}
+                  onChange={(e) => setShareEmail(e.target.value)}
+                />
+              </label>
+              <div className="modal-actions" style={{ justifyContent: 'flex-start', gap: '8px' }}>
+                <button className="btn-primary" onClick={handleCreateEmailInvite} disabled={isSharing}>建立 Email 邀請</button>
+              </div>
+              {shareStatus && (
+                <div className="notice">{shareStatus}</div>
+              )}
+            </div>
+            <div className="modal-actions">
+              <button className="btn-secondary" onClick={() => setShareGroupOpen(false)}>關閉</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <footer className="footer">
-        <p>總共有 {foods.length} 個美食選項，篩選後 {filteredFoods.length} 個</p>
+        {user && activeGroupId ? (
+          <p>總共有 {foods.length} 個美食選項，篩選後 {filteredFoods.length} 個</p>
+        ) : (
+          <p>登入後即可建立與管理美食團。</p>
+        )}
       </footer>
     </div>
   );

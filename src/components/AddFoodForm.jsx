@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import './AddFoodForm.css';
 
-function AddFoodForm({ onAdd, foods }) {
+function AddFoodForm({ onAdd, foods, disabled = false }) {
   const [formData, setFormData] = useState({
     name: '',
     flavor: '',
@@ -42,7 +42,8 @@ function AddFoodForm({ onAdd, foods }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+    if (disabled) return;
+
     if (!formData.name.trim()) {
       setError('請輸入美食名稱');
       return;
@@ -93,6 +94,7 @@ function AddFoodForm({ onAdd, foods }) {
     <div className="add-food-form">
       <h2>➕ 新增美食</h2>
       <form onSubmit={handleSubmit}>
+        {disabled && <div className="readonly-hint">此團設定為唯讀，無法新增美食。</div>}
         <div className="form-group">
           <label htmlFor="name">食物名稱:</label>
           <input
@@ -104,12 +106,13 @@ function AddFoodForm({ onAdd, foods }) {
             placeholder="例如：小高拉麵、火鍋、大胖炒飯..."
             maxLength={50}
             required
+            disabled={disabled}
           />
         </div>
         
         <div className="form-group">
           <label htmlFor="flavor">口味:</label>
-          <select id="flavor" name="flavor" value={formData.flavor} onChange={handleChange} required>
+          <select id="flavor" name="flavor" value={formData.flavor} onChange={handleChange} required disabled={disabled}>
             <option value="">選擇口味</option>
             <option value="甜">甜</option>
             <option value="鹹">鹹</option>
@@ -131,6 +134,7 @@ function AddFoodForm({ onAdd, foods }) {
                 setError('');
               }}
               required
+              disabled={disabled}
             >
               <option value="">開始時間</option>
               {timeOptions.map((time) => (
@@ -146,6 +150,7 @@ function AddFoodForm({ onAdd, foods }) {
                 setError('');
               }}
               required
+              disabled={disabled}
             >
               <option value="">結束時間</option>
               {timeOptions.map((time) => (
@@ -157,7 +162,7 @@ function AddFoodForm({ onAdd, foods }) {
         
         <div className="form-group">
           <label htmlFor="portion">份量:</label>
-          <select id="portion" name="portion" value={formData.portion} onChange={handleChange} required>
+          <select id="portion" name="portion" value={formData.portion} onChange={handleChange} required disabled={disabled}>
             <option value="">選擇份量</option>
             <option value="小">小</option>
             <option value="中">中</option>
@@ -167,7 +172,7 @@ function AddFoodForm({ onAdd, foods }) {
         
         <div className="form-group">
           <label htmlFor="price">價格:</label>
-          <select id="price" name="price" value={formData.price} onChange={handleChange} required>
+          <select id="price" name="price" value={formData.price} onChange={handleChange} required disabled={disabled}>
             <option value="">選擇價格</option>
             <option value="低">低</option>
             <option value="中">中</option>
@@ -177,7 +182,7 @@ function AddFoodForm({ onAdd, foods }) {
         
         <div className="form-group">
           <label htmlFor="guiltIndex">罪惡指數:</label>
-          <select id="guiltIndex" name="guiltIndex" value={formData.guiltIndex} onChange={handleChange} required>
+          <select id="guiltIndex" name="guiltIndex" value={formData.guiltIndex} onChange={handleChange} required disabled={disabled}>
             <option value="">選擇罪惡指數</option>
             <option value="低">低</option>
             <option value="中">中</option>
@@ -194,10 +199,11 @@ function AddFoodForm({ onAdd, foods }) {
             value={formData.addressText}
             onChange={handleChange}
             placeholder="例如 台北市信義區..."
+            disabled={disabled}
           />
         </div>
 
-        <button type="submit">新增</button>
+        <button type="submit" disabled={disabled}>新增</button>
         {error && <div className="error-message">{error}</div>}
       </form>
     </div>
