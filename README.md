@@ -30,3 +30,17 @@ npm run build
 2. 建立或加入美食團（可分享邀請連結）
 3. 在團內新增美食，並用骰子隨機選擇
 4. 可在成員管理中退出或由團長移除成員
+
+## 資料庫安全（RLS）
+
+本專案使用 Supabase RLS 保護資料。完整政策腳本請見：
+- `rls_policies.sql`
+
+**套用方式（在 Supabase SQL Editor 執行）：**
+```
+-- 直接貼上 rls_policies.sql 內容執行
+```
+
+**重點：**
+- 使用 security definer function 避免 policy 自我遞迴
+- `ratings.food_id` 為 bigint，對應 helper function 亦採 bigint
