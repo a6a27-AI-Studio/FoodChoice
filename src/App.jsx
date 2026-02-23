@@ -58,6 +58,9 @@ function App() {
   const [userLocation, setUserLocation] = useState(null);
   const [locationStatus, setLocationStatus] = useState('idle');
   const [locationError, setLocationError] = useState('');
+  const [guestFoods, setGuestFoods] = useState([]);
+  const [guestRatings, setGuestRatings] = useState({});
+  const guestStorageKey = 'foodchoice.guest.v1';
 
   useEffect(() => {
     const init = async () => {
@@ -77,6 +80,17 @@ function App() {
       }
     };
     init();
+
+    try {
+      const raw = localStorage.getItem(guestStorageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed?.foods)) setGuestFoods(parsed.foods);
+        if (parsed?.ratings && typeof parsed.ratings === 'object') setGuestRatings(parsed.ratings);
+      }
+    } catch (error) {
+      console.warn('讀取訪客資料失敗:', error);
+    }
 
     const hash = window.location.hash || '';
     const tokenMatch = hash.match(/#\/invite\/(.+)$/);
@@ -108,6 +122,10 @@ function App() {
       ensureLocation();
     }
   }, [sortBy]);
+
+  useEffect(() => {
+    localStorage.setItem(guestStorageKey, JSON.stringify({ foods: guestFoods, ratings: guestRatings }));
+  }, [guestFoods, guestRatings]);
 
   useEffect(() => {
     const refreshGroup = async () => {
@@ -166,6 +184,24 @@ function App() {
   };
 
   const handleAddFood = async (formData) => {
+    if (!user) {
+      const item = {
+        id: `guest-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name: formData.name,
+        flavor: formData.flavor,
+        businessHours: formData.businessHours,
+        portion: formData.portion,
+        price: formData.price,
+        guiltIndex: formData.guiltIndex,
+        addressText: formData.addressText || '',
+        created_at: new Date().toISOString(),
+        lat: null,
+        lng: null
+      };
+      setGuestFoods((prev) => [item, ...prev]);
+      return true;
+    }
+
     try {
       if (await addFood({ ...formData, groupId: activeGroupId })) {
         await loadFoods(activeGroupId);
@@ -184,6 +220,17 @@ function App() {
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
+    if (!user) {
+      setGuestFoods((prev) => prev.filter((item) => item.id !== deleteTarget.id));
+      setGuestRatings((prev) => {
+        const next = { ...prev };
+        delete next[deleteTarget.id];
+        return next;
+      });
+      setDeleteTarget(null);
+      return;
+    }
+
     if (await deleteFood(deleteTarget.id)) {
       await loadFoods(activeGroupId);
     }
@@ -210,6 +257,12 @@ function App() {
       return;
     }
 
+    if (!user) {
+      setGuestFoods((prev) => prev.map((item) => item.id === editTarget.id ? { ...item, ...editForm } : item));
+      setEditTarget(null);
+      return;
+    }
+
     try {
       const ok = await updateFood(editTarget.id, {
         ...editForm
@@ -224,6 +277,10 @@ function App() {
   };
 
   const handleRating = async (foodId, rating) => {
+    if (!user) {
+      setGuestRatings((prev) => ({ ...prev, [foodId]: rating }));
+      return;
+    }
     await setRating(foodId, rating);
     const allRatings = await getAllRatings();
     setRatings(allRatings);
@@ -405,8 +462,10 @@ function App() {
     }
   };
 
-  const canEdit = memberRole && memberRole !== 'readonly';
+  const canEdit = user ? (memberRole && memberRole !== 'readonly') : true;
   const canDeleteGroup = memberRole === 'admin';
+  const sourceFoods = user ? foods : guestFoods;
+  const sourceRatings = user ? ratings : guestRatings;
   const roleLabels = {
     admin: '管理員',
     member: '可編輯',
@@ -436,7 +495,7 @@ function App() {
   };
 
   const handleRecommend = () => {
-    const recommended = getRecommendedFood(filteredFoods, ratings);
+    const recommended = getRecommendedFood(filteredFoods, sourceRatings);
     if (!recommended) {
       alert('沒有評分的食物，請先評分一些食物！');
       return;
@@ -486,7 +545,7 @@ function App() {
     return R * c;
   };
 
-  const filteredFoods = foods.filter((food) => {
+  const filteredFoods = sourceFoods.filter((food) => {
     const query = searchQuery.trim().toLowerCase();
     if (query && !food.name.toLowerCase().includes(query)) return false;
     
@@ -610,13 +669,13 @@ function App() {
 
       <main className="main">
         {!user && (
-          <div className="notice">請先登入以使用美食團功能。</div>
+          <div className="notice">目前是訪客模式：資料只會存在你的瀏覽器（localStorage）。</div>
         )}
         {user && !activeGroupId && (
           <div className="notice">尚未加入任何美食團，請建立新團或接受邀請。</div>
         )}
 
-        {user && activeGroupId && (
+        {(!user || activeGroupId) && (
           <>
             <div className="search-section">
               <input
@@ -691,7 +750,7 @@ function App() {
 
             <FoodList 
               foods={sortedFoods} 
-              ratings={ratings}
+              ratings={sourceRatings}
               onDelete={handleDeleteFood}
               onRating={handleRating}
               onEdit={openEdit}
@@ -952,8 +1011,8 @@ function App() {
       )}
 
       <footer className="footer">
-        {user && activeGroupId ? (
-          <p>總共有 {foods.length} 個美食選項，篩選後 {filteredFoods.length} 個</p>
+        {(!user || activeGroupId) ? (
+          <p>總共有 {sourceFoods.length} 個美食選項，篩選後 {filteredFoods.length} 個</p>
         ) : (
           <p>登入後即可建立與管理美食團。</p>
         )}
