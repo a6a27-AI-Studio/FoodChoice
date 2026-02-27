@@ -213,6 +213,15 @@ export const getPublicGroupTrending = async ({ limit = 10 } = {}) => {
   return data || [];
 };
 
+export const getPersonalizedPublicGroupRecommendations = async ({ limit = 8 } = {}) => {
+  const { data, error } = await supabase
+    .rpc('get_personalized_public_group_recommendations', {
+      p_limit: limit
+    });
+  if (error) throw error;
+  return data || [];
+};
+
 export const getGroupRole = async (groupId, userId) => {
   if (!groupId || !userId) return null;
   const { data, error } = await supabase

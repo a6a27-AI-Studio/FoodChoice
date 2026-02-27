@@ -1,24 +1,21 @@
-# FoodChoice — 探索優化（v3）
+# FoodChoice — 探索優化（v4）
 
 ## 目標
-- 搜尋前有隨機推薦
-- 新增熱門榜 Top 10
-- 團主可二次編輯團設定
+- 個人化推薦（你可能會喜歡）
+- 收藏按鈕跨區塊狀態同步（推薦/熱門/搜尋）
 
 ## Stage-gate checklist
 
-### 1) DB / RPC（Supabase CLI migrations）
-- [x] 新增 `get_public_group_trending(limit)`
-- [x] `groups` 補 `updated_at` + trigger（更新排序/審計）
+### 1) DB / RPC
+- [x] 新增 `get_personalized_public_group_recommendations(limit)`
 
 ### 2) Frontend
-- [x] 探索頁顯示「🔥 今日熱門榜 Top 10」
-- [x] 建立團後可從「編輯團設定」二次編輯
-- [x] 可編輯欄位：名稱、描述、公開、分類、標籤
+- [x] 探索頁新增「你可能會喜歡」區塊
+- [x] 同一團在不同區塊收藏狀態同步切換
 
 ### 3) Local build/test
-- [x] `npm run build`
-- [ ] 手動驗證流程（熱門榜/編輯團設定/收藏狀態同步）
+- [ ] `npm run build`
+- [ ] 手動驗證收藏同步與個人化推薦
 
 ### 4) Deploy
 - [ ] push main

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { initDatabase, getFoodsByGroup, addFood, updateFood, deleteFood, getRandomFood, setRating, getRecommendedFood, getAllRatings, signInWithGoogle, signOut, getSession, onAuthStateChange, ensureUserProfile, getMyGroups, getMyFavoriteGroups, toggleGroupFavorite, searchPublicGroups, getPublicGroupRecommendations, getPublicGroupTrending, createGroup, updateGroup, getGroupRole, deleteGroup, createInvitation, acceptInvitation, getGroupMembers, removeGroupMember, leaveGroup } from './database';
+import { initDatabase, getFoodsByGroup, addFood, updateFood, deleteFood, getRandomFood, setRating, getRecommendedFood, getAllRatings, signInWithGoogle, signOut, getSession, onAuthStateChange, ensureUserProfile, getMyGroups, getMyFavoriteGroups, toggleGroupFavorite, searchPublicGroups, getPublicGroupRecommendations, getPublicGroupTrending, getPersonalizedPublicGroupRecommendations, createGroup, updateGroup, getGroupRole, deleteGroup, createInvitation, acceptInvitation, getGroupMembers, removeGroupMember, leaveGroup } from './database';
 import DiceRoll from './components/DiceRoll';
 import FoodList from './components/FoodList';
 import AddFoodForm from './components/AddFoodForm';
@@ -21,6 +21,7 @@ function App() {
   const [exploreStatus, setExploreStatus] = useState('');
   const [exploreResults, setExploreResults] = useState([]);
   const [recommendedGroups, setRecommendedGroups] = useState([]);
+  const [personalizedGroups, setPersonalizedGroups] = useState([]);
   const [trendingGroups, setTrendingGroups] = useState([]);
   const [exploreSort, setExploreSort] = useState('popular');
   const [isExploring, setIsExploring] = useState(false);
@@ -557,6 +558,28 @@ function App() {
     }
   };
 
+  const loadPersonalizedGroups = async () => {
+    if (!user?.id) return;
+    try {
+      const rows = await getPersonalizedPublicGroupRecommendations({ limit: 8 });
+      setPersonalizedGroups(rows);
+    } catch (error) {
+      setPersonalizedGroups([]);
+    }
+  };
+
+  const applyFavoriteStateAcrossExplore = (groupId, nextFavorited) => {
+    const patch = (list) => (list || []).map((g) => g.id === groupId ? {
+      ...g,
+      is_favorited: nextFavorited,
+      favorite_count: Math.max(0, (g.favorite_count || 0) + (nextFavorited ? 1 : -1))
+    } : g);
+    setExploreResults((prev) => patch(prev));
+    setRecommendedGroups((prev) => patch(prev));
+    setTrendingGroups((prev) => patch(prev));
+    setPersonalizedGroups((prev) => patch(prev));
+  };
+
   const handleOpenExplore = async () => {
     setExploreOpen(true);
     setExploreStatus('');
@@ -565,6 +588,7 @@ function App() {
     setExploreResults([]);
     await loadExploreRecommendations();
     await loadTrendingGroups();
+    await loadPersonalizedGroups();
   };
 
   const runExploreSearch = async (forcedKeyword = null) => {
@@ -588,14 +612,29 @@ function App() {
   const handleToggleFavorite = async (groupId, nextFavorited) => {
     if (!user?.id) return;
     try {
+      // optimistic sync across all explore blocks
+      applyFavoriteStateAcrossExplore(groupId, nextFavorited);
       await toggleGroupFavorite({ groupId, userId: user.id, nextFavorited });
       await loadFavorites(user.id);
-      await loadExploreRecommendations();
-      // refresh search list so ★數/狀態同步
+      await Promise.all([
+        loadExploreRecommendations(),
+        loadTrendingGroups(),
+        loadPersonalizedGroups()
+      ]);
+      // refresh search list if searching
       if ((exploreKeyword || '').trim()) {
         await runExploreSearch(exploreKeyword);
       }
     } catch (error) {
+      // rollback from server truth
+      await Promise.all([
+        loadExploreRecommendations(),
+        loadTrendingGroups(),
+        loadPersonalizedGroups()
+      ]);
+      if ((exploreKeyword || '').trim()) {
+        await runExploreSearch(exploreKeyword);
+      }
       alert(error?.message || '收藏操作失敗');
     }
   };
@@ -1264,6 +1303,27 @@ function App() {
                   <h4>🎯 隨機推薦（搜尋前）</h4>
                   <div className="explore-results">
                     {recommendedGroups.map((g) => (
+                      <div key={g.id} className="explore-row">
+                        <div className="explore-main">
+                          <div className="explore-title">{g.name}</div>
+                          {g.description && <div className="explore-desc">{g.description}</div>}
+                          <div className="explore-meta">★ {g.favorite_count || 0}{g.category ? ` · ${g.category}` : ''}{g.recommendation_reason ? ` · ${g.recommendation_reason}` : ''}</div>
+                        </div>
+                        <div className="explore-actions">
+                          <button className={g.is_favorited ? 'btn-secondary' : 'btn-primary'} onClick={() => handleToggleFavorite(g.id, !g.is_favorited)}>{g.is_favorited ? '取消收藏' : '收藏'}</button>
+                          <button className="btn-secondary" onClick={() => { setActiveGroupId(g.id); setExploreOpen(false); }}>打開</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {(exploreKeyword || '').trim() === '' && personalizedGroups.length > 0 && (
+                <>
+                  <h4>✨ 你可能會喜歡</h4>
+                  <div className="explore-results">
+                    {personalizedGroups.map((g) => (
                       <div key={g.id} className="explore-row">
                         <div className="explore-main">
                           <div className="explore-title">{g.name}</div>
