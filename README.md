@@ -7,6 +7,7 @@
 - 📝 記錄喜歡的美食
 - 🎲 骰子動畫隨機選擇
 - 👥 美食團（建立/分享/邀請/成員管理）
+- 🌐 公開美食團（可被搜尋 / 收藏，並顯示 ★ 星星數）
 - 🔐 Google 登入
 - ☁️ Supabase 雲端儲存（跨裝置同步）
 - ⚡ React + Vite 快速開發
@@ -29,17 +30,34 @@ npm run build
 1. 使用 Google 登入
 2. 建立或加入美食團（可分享邀請連結）
 3. 在團內新增美食，並用骰子隨機選擇
-4. 可在成員管理中退出或由團長移除成員
+4. 公開團可以在「探索公開團」中被搜尋（團名或團內美食名稱）
+5. 可收藏別人的公開團（唯讀），並可看到該團被收藏的 ★ 次數
+
+## Supabase（schema / migrations）
+
+本 repo 已加入 `supabase/migrations/`。
+
+### 套用 migrations（建議）
+
+```bash
+# 1) 初始化（若尚未有 supabase/）
+# supabase init
+
+# 2) 連結到你的 Supabase 專案（需要 Project Ref）
+supabase link --project-ref <your-project-ref>
+
+# 3) 推送 migrations 到遠端 DB
+supabase db push
+```
+
+> 注意：`supabase status` / `supabase start` 需要 Docker；但 `supabase link` / `supabase db push` 連遠端不一定需要 Docker。
 
 ## 資料庫安全（RLS）
 
-本專案使用 Supabase RLS 保護資料。完整政策腳本請見：
-- `rls_policies.sql`
+本專案使用 Supabase RLS 保護資料。
 
-**套用方式（在 Supabase SQL Editor 執行）：**
-```
--- 直接貼上 rls_policies.sql 內容執行
-```
+- migrations 會建立/更新必要的 RLS（包含公開團/收藏功能所需的額外 policy）
+- 另保留一份可手動套用的政策腳本：`rls_policies.sql`
 
 **重點：**
 - 使用 security definer function 避免 policy 自我遞迴

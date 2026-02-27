@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { initDatabase, getFoodsByGroup, addFood, updateFood, deleteFood, getRandomFood, setRating, getRecommendedFood, getAllRatings, signInWithGoogle, signOut, getSession, onAuthStateChange, ensureUserProfile, getMyGroups, createGroup, getGroupRole, deleteGroup, createInvitation, acceptInvitation, getGroupMembers, removeGroupMember, leaveGroup } from './database';
+import { initDatabase, getFoodsByGroup, addFood, updateFood, deleteFood, getRandomFood, setRating, getRecommendedFood, getAllRatings, signInWithGoogle, signOut, getSession, onAuthStateChange, ensureUserProfile, getMyGroups, getMyFavoriteGroups, toggleGroupFavorite, searchPublicGroups, createGroup, getGroupRole, deleteGroup, createInvitation, acceptInvitation, getGroupMembers, removeGroupMember, leaveGroup } from './database';
 import DiceRoll from './components/DiceRoll';
 import FoodList from './components/FoodList';
 import AddFoodForm from './components/AddFoodForm';
@@ -14,7 +14,13 @@ function App() {
   const [session, setSession] = useState(null);
   const [user, setUser] = useState(null);
   const [groups, setGroups] = useState([]);
+  const [favoriteGroups, setFavoriteGroups] = useState([]);
   const [activeGroupId, setActiveGroupId] = useState('');
+  const [exploreOpen, setExploreOpen] = useState(false);
+  const [exploreKeyword, setExploreKeyword] = useState('');
+  const [exploreStatus, setExploreStatus] = useState('');
+  const [exploreResults, setExploreResults] = useState([]);
+  const [isExploring, setIsExploring] = useState(false);
   const [memberRole, setMemberRole] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState({
@@ -39,7 +45,8 @@ function App() {
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [createGroupForm, setCreateGroupForm] = useState({
     name: '',
-    description: ''
+    description: '',
+    isPublic: false
   });
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [deleteGroupOpen, setDeleteGroupOpen] = useState(false);
@@ -73,6 +80,7 @@ function App() {
         if (currentSession?.user) {
           await ensureUserProfile(currentSession.user);
           await loadGroups(currentSession.user.id);
+          await loadFavorites(currentSession.user.id);
         }
       } catch (error) {
         console.error('初始化失敗:', error);
@@ -104,8 +112,10 @@ function App() {
       if (newSession?.user) {
         await ensureUserProfile(newSession.user);
         await loadGroups(newSession.user.id);
+        await loadFavorites(newSession.user.id);
       } else {
         setGroups([]);
+        setFavoriteGroups([]);
         setActiveGroupId('');
         setMemberRole('');
         setFoods([]);
@@ -147,6 +157,7 @@ function App() {
       try {
         const invite = await acceptInvitation({ token: inviteToken, userId: user.id, userEmail: user.email });
         await loadGroups(user.id);
+        await loadFavorites(user.id);
         if (invite?.group_id) {
           setActiveGroupId(invite.group_id);
         }
@@ -181,6 +192,11 @@ function App() {
       setActiveGroupId('');
       setFoods([]);
     }
+  };
+
+  const loadFavorites = async (userId) => {
+    const list = await getMyFavoriteGroups(userId);
+    setFavoriteGroups(list);
   };
 
   const handleAddFood = async (formData) => {
@@ -303,7 +319,7 @@ function App() {
   };
 
   const handleCreateGroup = () => {
-    setCreateGroupForm({ name: '', description: '' });
+    setCreateGroupForm({ name: '', description: '', isPublic: false });
     setCreateGroupOpen(true);
   };
 
@@ -318,7 +334,8 @@ function App() {
       const group = await createGroup({
         name: createGroupForm.name,
         description: createGroupForm.description,
-        ownerId: user?.id
+        ownerId: user?.id,
+        isPublic: createGroupForm.isPublic
       });
       await loadGroups(user?.id);
       if (group?.id) {
@@ -462,6 +479,37 @@ function App() {
     }
   };
 
+  const runExploreSearch = async () => {
+    if (!user?.id) return;
+    if (isExploring) return;
+    try {
+      setIsExploring(true);
+      setExploreStatus('搜尋中...');
+      const results = await searchPublicGroups({ keyword: exploreKeyword, limit: 50 });
+      setExploreResults(results);
+      setExploreStatus(results.length === 0 ? '找不到符合的公開美食團' : '');
+    } catch (error) {
+      setExploreStatus(error?.message || '搜尋失敗');
+    } finally {
+      setIsExploring(false);
+    }
+  };
+
+  const handleToggleFavorite = async (groupId, nextFavorited) => {
+    if (!user?.id) return;
+    try {
+      await toggleGroupFavorite({ groupId, userId: user.id, nextFavorited });
+      await loadFavorites(user.id);
+      // refresh explore list so ★數/狀態同步
+      await runExploreSearch();
+    } catch (error) {
+      alert(error?.message || '收藏操作失敗');
+    }
+  };
+
+  const favoriteAsGroups = favoriteGroups.map((g) => ({ ...g, role: 'favorite' }));
+  const combinedGroups = [...groups, ...favoriteAsGroups.filter((g) => !groups.some((m) => m.id === g.id))];
+
   const canEdit = user ? (memberRole && memberRole !== 'readonly') : true;
   const canDeleteGroup = memberRole === 'admin';
   const sourceFoods = user ? foods : guestFoods;
@@ -469,7 +517,8 @@ function App() {
   const roleLabels = {
     admin: '管理員',
     member: '可編輯',
-    readonly: '唯讀'
+    readonly: '唯讀',
+    favorite: '收藏(唯讀)'
   };
 
   const buildInviteLink = (token) => {
@@ -646,14 +695,15 @@ function App() {
               onChange={(e) => setActiveGroupId(e.target.value)}
               className="group-select"
             >
-              {groups.length === 0 && <option value="">尚未加入任何團</option>}
-              {groups.map((group) => (
+              {combinedGroups.length === 0 && <option value="">尚未加入任何團</option>}
+              {combinedGroups.map((group) => (
                 <option key={group.id} value={group.id}>
-                  {group.name} ({group.role})
+                  {group.name} ({roleLabels[group.role] || group.role}{typeof group.favorite_count === 'number' ? `, ★${group.favorite_count}` : ''})
                 </option>
               ))}
             </select>
             <button onClick={handleCreateGroup} className="btn-secondary">建立團</button>
+            <button onClick={() => { setExploreOpen(true); setExploreStatus(''); setExploreKeyword(''); setExploreResults([]); }} className="btn-secondary">探索公開團</button>
             {activeGroupId && (
               <button onClick={() => { setShareGroupOpen(true); setShareStatus(''); setShareLink(''); }} className="btn-secondary">分享團</button>
             )}
@@ -885,6 +935,14 @@ function App() {
                   onChange={(e) => setCreateGroupForm({ ...createGroupForm, description: e.target.value })}
                 />
               </label>
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={!!createGroupForm.isPublic}
+                  onChange={(e) => setCreateGroupForm({ ...createGroupForm, isPublic: e.target.checked })}
+                />
+                公開美食團（可被搜尋/收藏）
+              </label>
             </div>
             <div className="modal-actions">
               <button className="btn-secondary" onClick={() => setCreateGroupOpen(false)}>取消</button>
@@ -1005,6 +1063,67 @@ function App() {
             </div>
             <div className="modal-actions">
               <button className="btn-secondary" onClick={() => setMembersOpen(false)}>關閉</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {user && exploreOpen && (
+        <div className="modal-backdrop">
+          <div className="modal modal-wide">
+            <h3>探索公開美食團</h3>
+            <div className="modal-form">
+              <label>
+                關鍵字（團名或美食名稱）
+                <input
+                  type="text"
+                  value={exploreKeyword}
+                  onChange={(e) => setExploreKeyword(e.target.value)}
+                  placeholder="例如：火鍋 / 拉麵 / 便當"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') runExploreSearch();
+                  }}
+                />
+              </label>
+              <div className="modal-actions">
+                <button className="btn-secondary" onClick={() => setExploreOpen(false)}>關閉</button>
+                <button className="btn-primary" onClick={runExploreSearch} disabled={isExploring}>
+                  {isExploring ? '搜尋中...' : '搜尋'}
+                </button>
+              </div>
+              {exploreStatus && (
+                <div className="notice">{exploreStatus}</div>
+              )}
+              {exploreResults.length > 0 && (
+                <div className="explore-results">
+                  {exploreResults.map((g) => (
+                    <div key={g.id} className="explore-row">
+                      <div className="explore-main">
+                        <div className="explore-title">{g.name}</div>
+                        {g.description && <div className="explore-desc">{g.description}</div>}
+                        <div className="explore-meta">★ {g.favorite_count || 0}{g.matched_food_count ? ` · 命中美食 ${g.matched_food_count}` : ''}</div>
+                      </div>
+                      <div className="explore-actions">
+                        <button
+                          className={g.is_favorited ? 'btn-secondary' : 'btn-primary'}
+                          onClick={() => handleToggleFavorite(g.id, !g.is_favorited)}
+                        >
+                          {g.is_favorited ? '取消收藏' : '收藏'}
+                        </button>
+                        <button
+                          className="btn-secondary"
+                          onClick={() => {
+                            setActiveGroupId(g.id);
+                            setExploreOpen(false);
+                          }}
+                        >
+                          打開
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>

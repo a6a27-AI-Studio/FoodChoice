@@ -56,7 +56,7 @@ export const ensureUserProfile = async (user) => {
   return data;
 };
 
-export const createGroup = async ({ name, description, ownerId }) => {
+export const createGroup = async ({ name, description, ownerId, isPublic = false }) => {
   if (!name?.trim()) throw new Error('缺少群組名稱');
   const { data, error } = await supabase
     .from('groups')
@@ -64,6 +64,7 @@ export const createGroup = async ({ name, description, ownerId }) => {
       name: name.trim(),
       description: description || '',
       owner_id: ownerId,
+      is_public: !!isPublic,
       created_at: new Date().toISOString()
     })
     .select()
@@ -116,6 +117,49 @@ export const getMyGroups = async (userId) => {
     ...row.groups,
     role: row.role
   })).filter(Boolean);
+};
+
+export const getMyFavoriteGroups = async (userId) => {
+  if (!userId) return [];
+  const { data, error } = await supabase
+    .from('group_favorites')
+    .select('created_at, groups(*)')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data || []).map((row) => ({
+    ...row.groups,
+    favorited_at: row.created_at
+  })).filter(Boolean);
+};
+
+export const toggleGroupFavorite = async ({ groupId, userId, nextFavorited }) => {
+  if (!groupId) throw new Error('缺少群組資訊');
+  if (!userId) throw new Error('請先登入');
+  if (nextFavorited) {
+    const { error } = await supabase
+      .from('group_favorites')
+      .insert({ group_id: groupId, user_id: userId, created_at: new Date().toISOString() });
+    if (error && error.code !== '23505') throw error; // ignore unique violation
+    return true;
+  }
+  const { error } = await supabase
+    .from('group_favorites')
+    .delete()
+    .eq('group_id', groupId)
+    .eq('user_id', userId);
+  if (error) throw error;
+  return false;
+};
+
+export const searchPublicGroups = async ({ keyword = '', limit = 50 }) => {
+  const { data, error } = await supabase
+    .rpc('search_public_groups', {
+      p_keyword: keyword || '',
+      p_limit: limit
+    });
+  if (error) throw error;
+  return data || [];
 };
 
 export const getGroupRole = async (groupId, userId) => {

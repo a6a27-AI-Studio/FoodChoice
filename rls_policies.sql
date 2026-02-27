@@ -8,6 +8,7 @@ alter table if exists public.group_memberships enable row level security;
 alter table if exists public.group_invitations enable row level security;
 alter table if exists public.foods enable row level security;
 alter table if exists public.ratings enable row level security;
+alter table if exists public.group_favorites enable row level security;
 
 -- Helper functions (security definer to avoid policy recursion)
 create or replace function public.is_group_member(p_group_id uuid)
@@ -57,6 +58,16 @@ as $$
   );
 $$;
 
+create or replace function public.is_group_public(p_group_id uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+set row_security = off
+as $$
+  select coalesce((select g.is_public from public.groups g where g.id = p_group_id), false);
+$$;
+
 create or replace function public.is_food_group_member(p_food_id bigint)
 returns boolean
 language sql
@@ -96,10 +107,10 @@ drop policy if exists "groups_select_member" on public.groups;
 drop policy if exists "groups_update_admin" on public.groups;
 drop policy if exists "groups_delete_admin" on public.groups;
 
-create policy "groups_select_member"
+create policy "groups_select_public_or_member"
   on public.groups
   for select
-  using (public.is_group_member(id));
+  using (public.is_group_member(id) or is_public = true);
 
 create policy "groups_insert_authenticated"
   on public.groups
@@ -181,10 +192,10 @@ drop policy if exists "foods_insert_non_readonly" on public.foods;
 drop policy if exists "foods_update_non_readonly" on public.foods;
 drop policy if exists "foods_delete_non_readonly" on public.foods;
 
-create policy "foods_select_same_group"
+create policy "foods_select_public_or_member"
   on public.foods
   for select
-  using (public.is_group_member(group_id));
+  using (public.is_group_member(group_id) or public.is_group_public(group_id));
 
 create policy "foods_insert_non_readonly"
   on public.foods
@@ -235,3 +246,19 @@ alter table if exists public.ratings
 
 alter table if exists public.foods
   add column if not exists group_id uuid;
+
+-- group_favorites policies
+create policy "group_favorites_select_own"
+  on public.group_favorites
+  for select
+  using (user_id = auth.uid());
+
+create policy "group_favorites_insert_own"
+  on public.group_favorites
+  for insert
+  with check (user_id = auth.uid());
+
+create policy "group_favorites_delete_own"
+  on public.group_favorites
+  for delete
+  using (user_id = auth.uid());
