@@ -1,29 +1,28 @@
-# FoodChoice — 公開美食團搜尋 & 收藏
+# FoodChoice — 公開美食團探索升級（v2）
 
 ## 目標
-- 美食團可設定 **公開**（公開團可被搜尋）
-- 可用關鍵字搜尋公開團（團名 / 團內任一美食名稱）
-- 使用者可 **收藏** 公開團（唯讀瀏覽）
-- 每個公開團顯示 **星星數（被收藏次數）**，可依熱門排序
+- 搜尋前就有「隨機推薦公開團」
+- 強化探索 UI/UX（快速標籤、排序、資訊卡）
+- 搜尋欄位更完整（團名 / 美食名 / 分類 / 標籤）
 
 ## Stage-gate checklist
 
-### 1) DB / RLS / RPC
-- [ ] `groups` 增加 `is_public`、`favorite_count`
-- [ ] 新增 `group_favorites`（unique: group_id + user_id）
-- [ ] trigger 維護 `groups.favorite_count`
-- [ ] RLS：公開團允許 select；公開團 foods 允許 select；收藏表只允許本人 CRUD
-- [ ] RPC：`search_public_groups(keyword)` 回傳公開團 + 星星數 + 是否已收藏
+### 1) DB / RPC（Supabase CLI migrations）
+- [x] `groups` 新增 `category`
+- [x] `groups` 新增 `search_tags text[]`
+- [x] 強化 `search_public_groups(keyword)`（支援分類與標籤命中）
+- [x] 新增 `get_public_group_recommendations(limit)`
 
 ### 2) Frontend
-- [ ] 建立團時可勾選「公開」
-- [ ] 新增「探索公開團」UI：搜尋 + 結果列表 + 收藏/取消收藏
-- [ ] 收藏後可從 UI 開啟該團（唯讀），顯示星星數
-- [ ] 唯讀狀態下：不能新增/編輯/刪除美食（既有 canEdit 應 cover）
+- [x] 建立團可填：分類、搜尋標籤（逗號分隔）
+- [x] 探索公開團：初始顯示隨機推薦
+- [x] 快速標籤（火鍋/拉麵/宵夜/咖啡/健康餐）
+- [x] 搜尋結果排序（熱門/名稱/隨機）
+- [x] 顯示更多資訊（分類、標籤、推薦理由）
 
 ### 3) Local build/test
 - [ ] `npm run build`
-- [ ] 手動驗證流程（登入、建立公開團、搜尋、收藏、星星數變化、唯讀限制）
+- [ ] 手動驗證流程（推薦/搜尋/收藏/唯讀）
 
 ### 4) Deploy
 - [ ] push main

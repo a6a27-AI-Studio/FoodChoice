@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { initDatabase, getFoodsByGroup, addFood, updateFood, deleteFood, getRandomFood, setRating, getRecommendedFood, getAllRatings, signInWithGoogle, signOut, getSession, onAuthStateChange, ensureUserProfile, getMyGroups, getMyFavoriteGroups, toggleGroupFavorite, searchPublicGroups, createGroup, getGroupRole, deleteGroup, createInvitation, acceptInvitation, getGroupMembers, removeGroupMember, leaveGroup } from './database';
+import { initDatabase, getFoodsByGroup, addFood, updateFood, deleteFood, getRandomFood, setRating, getRecommendedFood, getAllRatings, signInWithGoogle, signOut, getSession, onAuthStateChange, ensureUserProfile, getMyGroups, getMyFavoriteGroups, toggleGroupFavorite, searchPublicGroups, getPublicGroupRecommendations, createGroup, getGroupRole, deleteGroup, createInvitation, acceptInvitation, getGroupMembers, removeGroupMember, leaveGroup } from './database';
 import DiceRoll from './components/DiceRoll';
 import FoodList from './components/FoodList';
 import AddFoodForm from './components/AddFoodForm';
@@ -20,6 +20,8 @@ function App() {
   const [exploreKeyword, setExploreKeyword] = useState('');
   const [exploreStatus, setExploreStatus] = useState('');
   const [exploreResults, setExploreResults] = useState([]);
+  const [recommendedGroups, setRecommendedGroups] = useState([]);
+  const [exploreSort, setExploreSort] = useState('popular');
   const [isExploring, setIsExploring] = useState(false);
   const [memberRole, setMemberRole] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -46,7 +48,9 @@ function App() {
   const [createGroupForm, setCreateGroupForm] = useState({
     name: '',
     description: '',
-    isPublic: false
+    isPublic: false,
+    category: '',
+    tagsText: ''
   });
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [deleteGroupOpen, setDeleteGroupOpen] = useState(false);
@@ -319,7 +323,7 @@ function App() {
   };
 
   const handleCreateGroup = () => {
-    setCreateGroupForm({ name: '', description: '', isPublic: false });
+    setCreateGroupForm({ name: '', description: '', isPublic: false, category: '', tagsText: '' });
     setCreateGroupOpen(true);
   };
 
@@ -335,7 +339,9 @@ function App() {
         name: createGroupForm.name,
         description: createGroupForm.description,
         ownerId: user?.id,
-        isPublic: createGroupForm.isPublic
+        isPublic: createGroupForm.isPublic,
+        category: createGroupForm.category,
+        tags: (createGroupForm.tagsText || '').split(',').map((t) => t.trim()).filter(Boolean)
       });
       await loadGroups(user?.id);
       if (group?.id) {
@@ -479,15 +485,43 @@ function App() {
     }
   };
 
-  const runExploreSearch = async () => {
+  const sortExploreList = (list, sortKey) => {
+    const arr = [...(list || [])];
+    if (sortKey === 'name') return arr.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh-Hant'));
+    if (sortKey === 'random') return arr.sort(() => Math.random() - 0.5);
+    return arr.sort((a, b) => (b.favorite_count || 0) - (a.favorite_count || 0));
+  };
+
+  const loadExploreRecommendations = async () => {
+    if (!user?.id) return;
+    try {
+      const recs = await getPublicGroupRecommendations({ limit: 6 });
+      setRecommendedGroups(recs);
+    } catch (error) {
+      setRecommendedGroups([]);
+    }
+  };
+
+  const handleOpenExplore = async () => {
+    setExploreOpen(true);
+    setExploreStatus('');
+    setExploreKeyword('');
+    setExploreSort('popular');
+    setExploreResults([]);
+    await loadExploreRecommendations();
+  };
+
+  const runExploreSearch = async (forcedKeyword = null) => {
     if (!user?.id) return;
     if (isExploring) return;
     try {
       setIsExploring(true);
       setExploreStatus('搜尋中...');
-      const results = await searchPublicGroups({ keyword: exploreKeyword, limit: 50 });
-      setExploreResults(results);
-      setExploreStatus(results.length === 0 ? '找不到符合的公開美食團' : '');
+      const keyword = forcedKeyword === null ? exploreKeyword : forcedKeyword;
+      const results = await searchPublicGroups({ keyword, limit: 50 });
+      const sorted = sortExploreList(results, exploreSort);
+      setExploreResults(sorted);
+      setExploreStatus(sorted.length === 0 ? '找不到符合的公開美食團' : '');
     } catch (error) {
       setExploreStatus(error?.message || '搜尋失敗');
     } finally {
@@ -500,8 +534,11 @@ function App() {
     try {
       await toggleGroupFavorite({ groupId, userId: user.id, nextFavorited });
       await loadFavorites(user.id);
-      // refresh explore list so ★數/狀態同步
-      await runExploreSearch();
+      await loadExploreRecommendations();
+      // refresh search list so ★數/狀態同步
+      if ((exploreKeyword || '').trim()) {
+        await runExploreSearch(exploreKeyword);
+      }
     } catch (error) {
       alert(error?.message || '收藏操作失敗');
     }
@@ -703,7 +740,7 @@ function App() {
               ))}
             </select>
             <button onClick={handleCreateGroup} className="btn-secondary">建立團</button>
-            <button onClick={() => { setExploreOpen(true); setExploreStatus(''); setExploreKeyword(''); setExploreResults([]); }} className="btn-secondary">探索公開團</button>
+            <button onClick={handleOpenExplore} className="btn-secondary">探索公開團</button>
             {activeGroupId && (
               <button onClick={() => { setShareGroupOpen(true); setShareStatus(''); setShareLink(''); }} className="btn-secondary">分享團</button>
             )}
@@ -935,6 +972,24 @@ function App() {
                   onChange={(e) => setCreateGroupForm({ ...createGroupForm, description: e.target.value })}
                 />
               </label>
+              <label>
+                分類（選填）
+                <input
+                  type="text"
+                  placeholder="例如：宵夜、減脂餐、咖啡甜點"
+                  value={createGroupForm.category}
+                  onChange={(e) => setCreateGroupForm({ ...createGroupForm, category: e.target.value })}
+                />
+              </label>
+              <label>
+                搜尋標籤（選填，逗號分隔）
+                <input
+                  type="text"
+                  placeholder="例如：台北,火鍋,聚餐"
+                  value={createGroupForm.tagsText}
+                  onChange={(e) => setCreateGroupForm({ ...createGroupForm, tagsText: e.target.value })}
+                />
+              </label>
               <label className="checkbox-row">
                 <input
                   type="checkbox"
@@ -1074,55 +1129,88 @@ function App() {
             <h3>探索公開美食團</h3>
             <div className="modal-form">
               <label>
-                關鍵字（團名或美食名稱）
+                關鍵字（團名 / 美食名 / 分類 / 標籤）
                 <input
                   type="text"
                   value={exploreKeyword}
                   onChange={(e) => setExploreKeyword(e.target.value)}
-                  placeholder="例如：火鍋 / 拉麵 / 便當"
+                  placeholder="例如：火鍋 / 拉麵 / 台北 / 宵夜"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') runExploreSearch();
                   }}
                 />
               </label>
+
+              <div className="explore-toolbar">
+                <div className="quick-tags">
+                  {['火鍋', '拉麵', '宵夜', '咖啡', '健康餐'].map((tag) => (
+                    <button key={tag} className="tag-chip" onClick={() => { setExploreKeyword(tag); runExploreSearch(tag); }}>{tag}</button>
+                  ))}
+                </div>
+                <select value={exploreSort} onChange={(e) => {
+                  const next = e.target.value;
+                  setExploreSort(next);
+                  setExploreResults((prev) => sortExploreList(prev, next));
+                }}>
+                  <option value="popular">熱門優先（★）</option>
+                  <option value="name">名稱排序</option>
+                  <option value="random">隨機排序</option>
+                </select>
+              </div>
+
               <div className="modal-actions">
                 <button className="btn-secondary" onClick={() => setExploreOpen(false)}>關閉</button>
+                <button className="btn-secondary" onClick={loadExploreRecommendations}>刷新推薦</button>
                 <button className="btn-primary" onClick={runExploreSearch} disabled={isExploring}>
                   {isExploring ? '搜尋中...' : '搜尋'}
                 </button>
               </div>
-              {exploreStatus && (
-                <div className="notice">{exploreStatus}</div>
+
+              {(exploreKeyword || '').trim() === '' && recommendedGroups.length > 0 && (
+                <>
+                  <h4>🎯 隨機推薦（搜尋前）</h4>
+                  <div className="explore-results">
+                    {recommendedGroups.map((g) => (
+                      <div key={g.id} className="explore-row">
+                        <div className="explore-main">
+                          <div className="explore-title">{g.name}</div>
+                          {g.description && <div className="explore-desc">{g.description}</div>}
+                          <div className="explore-meta">★ {g.favorite_count || 0}{g.category ? ` · ${g.category}` : ''}{g.recommendation_reason ? ` · ${g.recommendation_reason}` : ''}</div>
+                        </div>
+                        <div className="explore-actions">
+                          <button className={g.is_favorited ? 'btn-secondary' : 'btn-primary'} onClick={() => handleToggleFavorite(g.id, !g.is_favorited)}>{g.is_favorited ? '取消收藏' : '收藏'}</button>
+                          <button className="btn-secondary" onClick={() => { setActiveGroupId(g.id); setExploreOpen(false); }}>打開</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
               )}
+
+              {exploreStatus && <div className="notice">{exploreStatus}</div>}
+
               {exploreResults.length > 0 && (
-                <div className="explore-results">
-                  {exploreResults.map((g) => (
-                    <div key={g.id} className="explore-row">
-                      <div className="explore-main">
-                        <div className="explore-title">{g.name}</div>
-                        {g.description && <div className="explore-desc">{g.description}</div>}
-                        <div className="explore-meta">★ {g.favorite_count || 0}{g.matched_food_count ? ` · 命中美食 ${g.matched_food_count}` : ''}</div>
+                <>
+                  <h4>🔎 搜尋結果</h4>
+                  <div className="explore-results">
+                    {exploreResults.map((g) => (
+                      <div key={g.id} className="explore-row">
+                        <div className="explore-main">
+                          <div className="explore-title">{g.name}</div>
+                          {g.description && <div className="explore-desc">{g.description}</div>}
+                          <div className="explore-meta">★ {g.favorite_count || 0}{g.matched_food_count ? ` · 命中美食 ${g.matched_food_count}` : ''}{g.category ? ` · ${g.category}` : ''}</div>
+                          {Array.isArray(g.search_tags) && g.search_tags.length > 0 && (
+                            <div className="tag-row">{g.search_tags.slice(0, 6).map((t) => <span key={t} className="tag-pill">#{t}</span>)}</div>
+                          )}
+                        </div>
+                        <div className="explore-actions">
+                          <button className={g.is_favorited ? 'btn-secondary' : 'btn-primary'} onClick={() => handleToggleFavorite(g.id, !g.is_favorited)}>{g.is_favorited ? '取消收藏' : '收藏'}</button>
+                          <button className="btn-secondary" onClick={() => { setActiveGroupId(g.id); setExploreOpen(false); }}>打開</button>
+                        </div>
                       </div>
-                      <div className="explore-actions">
-                        <button
-                          className={g.is_favorited ? 'btn-secondary' : 'btn-primary'}
-                          onClick={() => handleToggleFavorite(g.id, !g.is_favorited)}
-                        >
-                          {g.is_favorited ? '取消收藏' : '收藏'}
-                        </button>
-                        <button
-                          className="btn-secondary"
-                          onClick={() => {
-                            setActiveGroupId(g.id);
-                            setExploreOpen(false);
-                          }}
-                        >
-                          打開
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                </>
               )}
             </div>
           </div>

@@ -56,7 +56,7 @@ export const ensureUserProfile = async (user) => {
   return data;
 };
 
-export const createGroup = async ({ name, description, ownerId, isPublic = false }) => {
+export const createGroup = async ({ name, description, ownerId, isPublic = false, category = '', tags = [] }) => {
   if (!name?.trim()) throw new Error('缺少群組名稱');
   const { data, error } = await supabase
     .from('groups')
@@ -65,6 +65,8 @@ export const createGroup = async ({ name, description, ownerId, isPublic = false
       description: description || '',
       owner_id: ownerId,
       is_public: !!isPublic,
+      category: category?.trim() || null,
+      search_tags: (tags || []).map((t) => String(t).trim()).filter(Boolean),
       created_at: new Date().toISOString()
     })
     .select()
@@ -156,6 +158,15 @@ export const searchPublicGroups = async ({ keyword = '', limit = 50 }) => {
   const { data, error } = await supabase
     .rpc('search_public_groups', {
       p_keyword: keyword || '',
+      p_limit: limit
+    });
+  if (error) throw error;
+  return data || [];
+};
+
+export const getPublicGroupRecommendations = async ({ limit = 6 } = {}) => {
+  const { data, error } = await supabase
+    .rpc('get_public_group_recommendations', {
       p_limit: limit
     });
   if (error) throw error;
