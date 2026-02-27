@@ -1,28 +1,24 @@
-# FoodChoice — 公開美食團探索升級（v2）
+# FoodChoice — 探索優化（v3）
 
 ## 目標
-- 搜尋前就有「隨機推薦公開團」
-- 強化探索 UI/UX（快速標籤、排序、資訊卡）
-- 搜尋欄位更完整（團名 / 美食名 / 分類 / 標籤）
+- 搜尋前有隨機推薦
+- 新增熱門榜 Top 10
+- 團主可二次編輯團設定
 
 ## Stage-gate checklist
 
 ### 1) DB / RPC（Supabase CLI migrations）
-- [x] `groups` 新增 `category`
-- [x] `groups` 新增 `search_tags text[]`
-- [x] 強化 `search_public_groups(keyword)`（支援分類與標籤命中）
-- [x] 新增 `get_public_group_recommendations(limit)`
+- [x] 新增 `get_public_group_trending(limit)`
+- [x] `groups` 補 `updated_at` + trigger（更新排序/審計）
 
 ### 2) Frontend
-- [x] 建立團可填：分類、搜尋標籤（逗號分隔）
-- [x] 探索公開團：初始顯示隨機推薦
-- [x] 快速標籤（火鍋/拉麵/宵夜/咖啡/健康餐）
-- [x] 搜尋結果排序（熱門/名稱/隨機）
-- [x] 顯示更多資訊（分類、標籤、推薦理由）
+- [x] 探索頁顯示「🔥 今日熱門榜 Top 10」
+- [x] 建立團後可從「編輯團設定」二次編輯
+- [x] 可編輯欄位：名稱、描述、公開、分類、標籤
 
 ### 3) Local build/test
-- [ ] `npm run build`
-- [ ] 手動驗證流程（推薦/搜尋/收藏/唯讀）
+- [x] `npm run build`
+- [ ] 手動驗證流程（熱門榜/編輯團設定/收藏狀態同步）
 
 ### 4) Deploy
 - [ ] push main

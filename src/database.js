@@ -87,6 +87,36 @@ export const createGroup = async ({ name, description, ownerId, isPublic = false
   return data;
 };
 
+export const updateGroup = async ({ groupId, userId, name, description, isPublic, category, tags = [] }) => {
+  if (!groupId) throw new Error('缺少群組資訊');
+  if (!userId) throw new Error('請先登入');
+  if (!name?.trim()) throw new Error('缺少群組名稱');
+
+  const { data: membership, error: roleError } = await supabase
+    .from('group_memberships')
+    .select('role')
+    .eq('group_id', groupId)
+    .eq('user_id', userId)
+    .single();
+  if (roleError) throw roleError;
+  if (membership?.role !== 'admin') throw new Error('僅管理員可編輯群組');
+
+  const { data, error } = await supabase
+    .from('groups')
+    .update({
+      name: name.trim(),
+      description: description || '',
+      is_public: !!isPublic,
+      category: category?.trim() || null,
+      search_tags: (tags || []).map((t) => String(t).trim()).filter(Boolean)
+    })
+    .eq('id', groupId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+};
+
 export const deleteGroup = async ({ groupId, userId }) => {
   if (!groupId) throw new Error('缺少群組資訊');
   if (!userId) throw new Error('請先登入');
@@ -167,6 +197,15 @@ export const searchPublicGroups = async ({ keyword = '', limit = 50 }) => {
 export const getPublicGroupRecommendations = async ({ limit = 6 } = {}) => {
   const { data, error } = await supabase
     .rpc('get_public_group_recommendations', {
+      p_limit: limit
+    });
+  if (error) throw error;
+  return data || [];
+};
+
+export const getPublicGroupTrending = async ({ limit = 10 } = {}) => {
+  const { data, error } = await supabase
+    .rpc('get_public_group_trending', {
       p_limit: limit
     });
   if (error) throw error;
