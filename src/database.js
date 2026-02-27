@@ -58,6 +58,7 @@ export const ensureUserProfile = async (user) => {
 
 export const createGroup = async ({ name, description, ownerId, isPublic = false, category = '', tags = [] }) => {
   if (!name?.trim()) throw new Error('缺少群組名稱');
+  if (!ownerId) throw new Error('請先登入後再建立美食團');
   const { data, error } = await supabase
     .from('groups')
     .insert({
